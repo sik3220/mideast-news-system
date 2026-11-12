@@ -1,0 +1,19 @@
+# 추천 점검 기준 2: 2026.10.29자 주간 보고서(10.22~10.28)에 실린 사안. 형식은 report_items.yaml 과 같다.
+period: {from: "2026-10-22", to: "2026-10-28"}
+items:
+  - {name: "비스마야·한화 미수금 지급 주장", find: "bismaya|비스마야|بسماية|hanwha|한화|هانوا"}
+  - {name: "제25회 내각회의", find: "council of ministers|مجلس الوزراء|내각회의|iraqi cabinet"}
+  - {name: "사우디, 이라크발 드론 공격 주장", find: "saudi.*(drone|iraq)|사우디.*드론|السعودية.*(مسيّر|مسير|العراق)"}
+  - {name: "총리 인터뷰(국경 폐쇄·토지 공급·달러)", find: "border clos|residential (land|plots)|million plots|land plots|dollar (cash|supply)|قطعة أرض"}
+  - {name: "총리 요르단 방문", find: "jordan|요르단|الأردن|amman"}
+  - {name: "Misan州 의회의장 체포영장", find: "misan|maysan|ميسان"}
+  - {name: "중앙은행 외환보유액", find: "central bank|\\bcbi\\b|reserves|외환보유|البنك المركزي"}
+  - {name: "Tahrir 광장 反정부 시위", find: "tahrir|التحرير|protest|시위"}
+  - {name: "그린존 인근 드론 요격", find: "green zone|그린존|المنطقة الخضراء|embassy.*(drone|siren)"}
+  - {name: "국제유가 동향", find: "brent|wti|oil prices?\\b|국제유가|두바이유|أسعار النفط"}
+  - {name: "Trump 이란 재타격 가능성", find: "trump.*iran|트럼프.*이란|이란.*트럼프"}
+  - {name: "美 국무부, 중동 대사관 인력 감축", find: "embassy staff|ordered departure|non-emergency|evacuat|대사관.*(감축|철수|출국)"}
+  - {name: "이스라엘 총선·Netanyahu 연정", find: "israel.*(election|coalition|vote)|netanyahu.*(election|coalition|seats)|이스라엘.*총선|네타냐후.*(연정|총선)"}
+  - {name: "이집트의 사우디 군사 지원·후티 갈등", find: "egypt|이집트|مصر|houthi|후티"}
+  - {name: "이란 최고지도자 발언", find: "mojtaba|supreme leader|최고지도자|모즈타바"}
+  - {name: "Vance 부통령 서한", find: "vance|밴스"}

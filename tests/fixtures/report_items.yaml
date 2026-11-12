@@ -1,0 +1,19 @@
+# 추천 점검 기준: 실제 보고서에 실린 항목과, 그 항목을 다룬 기사 제목을 찾는 표현(정규식).
+# 새 보고서의 항목을 여기에 더하면 scripts/audit_recommend.py 의 기준이 늘어난다.
+# 내용 자체는 저장하지 않고 "어떤 사안이 실렸는가"만 적는다.
+period: {from: "2026-11-09", to: "2026-11-12"}
+items:
+  - {name: "비스마야·한화·NIC", find: "bismaya|비스마야|بسماية|hanwha|한화|هانوا|national investment commission|هيئة الاستثمار|이라크 신도시"}
+  - {name: "제27회 내각회의 결과", find: "27th|السابعة والعشرين|council of ministers|مجلس الوزراء|내각회의|iraqi cabinet"}
+  - {name: "천궁-II 자금 집행", find: "천궁|cheongung|m-sam"}
+  - {name: "Khor Mor 가스전 드론 공격", find: "khor ?mor|kormor|كورمور|코르모르"}
+  - {name: "무장단체 무기통제 협상", find: "disarm|rogue arms|weapons row|حصر السلاح|무기통제|무기 통제"}
+  - {name: "KRG 총리–총리 예산 배분 논의", find: "masrour|مسرور|budget share|kurdistan pms|kurdistan region prime minister|حصة الإقليم|쿠르드.*예산"}
+  - {name: "이란, 주이라크 대사 내정", find: "next envoy|masgar|mesgar|ambassador to iraq|iraq envoy|سفير.*إيران|이란.*대사"}
+  - {name: "Kirkuk IS 공습·수색작전", find: "(kirkuk|كركوك|키르쿠크).*(isis|daesh|داعش|IS )|(isis|daesh|داعش).*(kirkuk|كركوك)"}
+  - {name: "Trump 對이란 전쟁 관련 발언", find: "trump.*iran|트럼프.*이란|이란.*트럼프"}
+  - {name: "美 국무장관, 對이란 군사작전 불필요", find: "rubio|루비오|국무장관"}
+  - {name: "Vance–이란 안보회의 사무총장 회담 검토", find: "vance|밴스"}
+  - {name: "이란, 농축 핵물질 반출 거부", find: "enrich|uranium|농축|핵물질|اليورانيوم"}
+  - {name: "국제유가 동향", find: "brent|wti|oil prices?\\b|국제유가|두바이유|أسعار النفط"}
+  - {name: "이란 외무부, 韓 해군 파병 우려", find: "이란.*(청해부대|파병)|(청해부대|파병).*이란"}

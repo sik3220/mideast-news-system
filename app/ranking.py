@@ -60,6 +60,47 @@ def classify(a: dict, cfg: dict) -> tuple[str, str]:
     return category, region
 
 
+def match_themes(a: dict, cfg: dict) -> list[dict]:
+    """제목이 걸리는 관심 사안 목록. needs_iraq 인 사안은 기사에 이라크 문맥이 있어야 한다."""
+    title, rest = _texts(a)
+    has_iraq = find_term(cfg["iraq_context"], title + " " + rest) is not None
+    return [t for t in cfg.get("themes") or []
+            if (has_iraq or not t.get("needs_iraq")) and find_term(t["words"], title)]
+
+
+def _source_text(a: dict) -> str:
+    return f"{a.get('source_name') or ''} {a.get('source_domain') or ''}".lower()
+
+
+def is_preferred_source(a: dict, cfg: dict) -> bool:
+    text = _source_text(a)
+    return any(str(s).lower() in text for s in cfg.get("preferred_sources") or [])
+
+
+def is_blocked_source(a: dict, cfg: dict) -> bool:
+    text = _source_text(a)
+    return any(str(s).lower() in text for s in cfg.get("blocked_sources") or [])
+
+
+SECTION_BY_CATEGORY = {"정치": "정치", "치안": "치안 · 테러", "테러": "치안 · 테러", "경제": "경제", "국제": "국제"}
+FOCUS = "관심 주제"
+
+
+def direct_topics(a: dict, cfg: dict) -> list[str]:
+    must = (cfg.get("recommend") or {}).get("must_topics", [])
+    return [t for t in must if match_topic(t, a, cfg) == "title"]
+
+
+def section_of(a: dict, cfg: dict) -> str:
+    """보고서 구역. 관심 주제 직접 보도 → 관심 사안이 정한 구역 → 분류 순으로 정한다."""
+    if direct_topics(a, cfg):
+        return FOCUS
+    for t in match_themes(a, cfg):
+        if t.get("section"):
+            return t["section"]
+    return SECTION_BY_CATEGORY.get(a.get("category") or "", "기타")
+
+
 def score_article(a: dict, n_sources: int = 1, cfg: dict | None = None, now=None) -> dict:
     """기사 하나의 주제·분류·지역·점수·추천 이유를 계산한다."""
     cfg = cfg or topics_config()
@@ -98,6 +139,13 @@ def score_article(a: dict, n_sources: int = 1, cfg: dict | None = None, now=None
             base, reason = w["regional"], "그 밖의 중동 동향"
         reasons.append(reason)
 
+    themes = match_themes(a, cfg)
+    if themes:
+        floor = max((t.get("floor", 0) for t in themes), default=0)
+        bonus = max((t.get("bonus", 0) for t in themes), default=0)   # 여러 사안에 걸려도 가점은 한 번만
+        base = max(base, floor) + bonus
+        reasons.append("관심 사안: " + ", ".join(t["label"] for t in themes))
+
     score = base
     hits = [t for t in a.get("search_topics", []) if t in ("bismayah", "cabinet") and t not in topics]
     if hits and find_term(cfg["iraq_context"], title):
@@ -112,6 +160,9 @@ def score_article(a: dict, n_sources: int = 1, cfg: dict | None = None, now=None
     if any(domain == d or domain.endswith("." + d) for d in cfg["official_domains"]):
         score += w["official"]
         reasons.append("공식기관·국영통신 발표(내용의 독립 검증은 아님)")
+    if is_preferred_source(a, cfg):
+        score += w.get("preferred_source", 0)
+        reasons.append("보고서에서 자주 인용하는 매체")
     if n_sources >= 2:
         score += w["multi_source"]
         reasons.append(f"독립 매체 {n_sources}곳 보도")

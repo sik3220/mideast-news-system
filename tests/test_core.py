@@ -284,7 +284,8 @@ def test_recommended_is_limited_and_balanced_across_categories(conn):
     shown, matched, trimmed = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
     assert matched == 50 and trimmed and len(shown) == 20
     cats = [a["category"] for a in shown]
-    assert cats.count("경제") == 5 and cats.count("정치") == 5 and cats.count("치안") == 10
+    # 정원: 정치 5, 치안·테러 4, 경제 3. 남는 8자리는 점수순(치안이 가장 높음)으로 채운다.
+    assert cats.count("경제") == 3 and cats.count("정치") == 5 and cats.count("치안") == 12
     everything, _, cut = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, True)
     assert len(everything) == 50 and not cut                     # 전체 보기
 
@@ -462,3 +463,66 @@ def test_stored_flags_are_rechecked_with_current_rules(conn):
                     WHERE id=?""", (aid,))
     llm.recheck_flags(conn)
     assert db.get_article(conn, aid)["summary_flags"] == []
+
+
+# ───────── 보고서 구성에 맞춘 추천 ─────────
+
+def test_interest_themes_raise_score_and_explain_why():
+    plain = ranking.score_article(make_article(title="Iraq to build a new airport in Baghdad"))
+    themed = ranking.score_article(make_article(title="Iraq PM aide: no deadline for disarming militias this year"))
+    assert themed["score"] > plain["score"] and any("무장단체 무기통제" in r for r in themed["reasons"])
+    # 이라크 문맥이 필요한 사안은 다른 나라 기사에 걸리지 않는다
+    assert not any("관심 사안" in r for r in ranking.score_article(make_article(title="Lebanon militias clash in Beirut"))["reasons"])
+
+
+def test_us_iran_news_without_iraq_is_recommended_in_international_section(conn):
+    _many(conn, 30, "Iraq attack")
+    db.upsert_article(conn, make_article("https://example.com/v", "Vance weighs direct talks with Iran security chief"))
+    db.upsert_article(conn, make_article("https://example.com/o", "Oil up 1% as Brent and WTI rebound"))
+    pipeline.recompute(conn)
+    shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    by = {a["title"]: a for a in shown}
+    assert by["Vance weighs direct talks with Iran security chief"]["pick_reason"] == "국제 구역 상위"
+    assert by["Oil up 1% as Brent and WTI rebound"]["pick_reason"] == "경제 구역 상위"
+    names = dict(pipeline.sections(shown))
+    assert [a["title"] for a in names["국제"]] == ["Vance weighs direct talks with Iran security chief"]
+
+
+def test_cabinet_is_capped_but_bismayah_is_not(conn):
+    import hashlib
+    for i in range(6):
+        h = hashlib.sha256(str(i).encode()).hexdigest()[:30]
+        db.upsert_article(conn, make_article(f"https://example.com/c{i}", f"Iraqi cabinet {h}"))
+        db.upsert_article(conn, make_article(f"https://example.com/b{i}", f"Bismayah {h[::-1]}"))
+    _many(conn, 30, "Iraq attack")
+    pipeline.recompute(conn)
+    shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    titles = [a["title"] for a in shown]
+    assert sum(t.startswith("Iraqi cabinet") for t in titles) == 2      # 내각회의는 상한 2건
+    assert sum(t.startswith("Bismayah") for t in titles) == 6           # 비스마야는 전부
+    assert len(shown) == 20
+
+
+def test_blocked_sources_are_hidden_and_preferred_sources_get_a_bonus(conn):
+    db.upsert_article(conn, make_article("https://www.britannica.com/x", "Iraq history", source_name="Britannica",
+                                         source_domain="britannica.com"))
+    db.upsert_article(conn, make_article("https://shafaq.com/y", "Iraq budget talks", source_name="Shafaq News",
+                                         source_domain="shafaq.com"))
+    pipeline.recompute(conn)
+    listed = pipeline.list_articles(conn, "2026-11-10", "2026-11-10")
+    assert [a["source_name"] for a in listed] == ["Shafaq News"]
+    assert "보고서에서 자주 인용하는 매체" in listed[0]["reasons"]
+
+
+def test_longer_periods_show_proportionally_more(conn):
+    assert pipeline.period_scale("2026-11-10", "2026-11-10") == 1 and pipeline.period_scale("2026-11-10", "2026-11-11") == 1
+    assert pipeline.period_scale("2026-11-05", "2026-11-11") == 3          # 7일 → 최대 3배
+    for day in ("2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11"):
+        import hashlib
+        for i in range(30):
+            h = hashlib.sha256(f"{day}{i}".encode()).hexdigest()[:40]
+            db.upsert_article(conn, make_article(f"https://example.com/{h}", f"Iraq attack {h}",
+                                                 published_at=f"{day}T09:00:00Z", published_date=day))
+    pipeline.recompute(conn)
+    assert len(pipeline.dashboard_list(conn, "2026-11-10", "2026-11-11", {}, False)[0]) == 20
+    assert len(pipeline.dashboard_list(conn, "2026-11-08", "2026-11-11", {}, False)[0]) == 40

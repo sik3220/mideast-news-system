@@ -117,10 +117,13 @@ def list_articles(conn, d_from: str, d_to: str, *, keyword: str = "", category: 
     for a in articles:
         groups[a["event_id"] or a["id"]].append(a)
     kw = keyword.strip().lower()
+    cfg = topics_config()
     out = []
     for a in articles:
         within = in_period(a["published_at"], a["published_date"], a["time_precision"], d_from, d_to)
         if within is False or (within is None and not include_undated):
+            continue
+        if ranking.is_blocked_source(a, cfg):
             continue
         if category and a["category"] != category:
             continue
@@ -153,37 +156,68 @@ def list_articles(conn, d_from: str, d_to: str, *, keyword: str = "", category: 
     return result
 
 
-def pick_recommended(events: list[dict], cfg: dict | None = None) -> list[dict]:
-    """점수순 사건 목록에서 첫 화면에 보일 것만 고른다.
+def period_scale(d_from: str, d_to: str, cfg: dict | None = None) -> float:
+    """기간이 길면 추천 수도 늘린다. 기준은 이틀에 limit 건이고, 최대 max_scale 배까지."""
+    from datetime import date
+    rule = (cfg or topics_config()).get("recommend") or {}
+    days = (date.fromisoformat(d_to) - date.fromisoformat(d_from)).days + 1
+    return min(float(rule.get("max_scale", 3)), max(1.0, days / 2))
 
-    관심 주제를 제목에서 직접 다룬 사건과 사용자가 선택한 사건은 항상 넣고,
-    남는 자리는 분야를 돌아가며 각 분야의 상위 사건으로 채워 한 분야가 목록을 독차지하지 않게 한다.
+
+def pick_recommended(events: list[dict], cfg: dict | None = None, scale: float = 1.0) -> list[dict]:
+    """점수순 사건 목록에서 첫 화면에 보일 것만 고른다. 보고서 구성대로 구역별 정원을 채운다.
+
+    1) 관심 주제를 제목에서 직접 다룬 사건(주제별 상한 적용)  2) 구역별 정원만큼 점수순
+    3) 남는 자리는 구역 구분 없이 점수순  4) 사용자가 선택한 사건은 제한과 무관하게 포함
     """
     cfg = cfg or topics_config()
     rule = cfg.get("recommend") or {}
-    limit = int(rule.get("limit", 20))
+    limit = round(int(rule.get("limit", 20)) * scale)
+    floor = float(rule.get("min_score", 0))
+    caps = {k: round(v * scale) for k, v in (rule.get("must_cap") or {}).items()}
     picked: dict[int, dict] = {}
+    over_cap: set[int] = set()                           # 주제 상한을 넘은 사건: 다른 구역 자리도 차지하지 않게 한다
 
     def take(a: dict, reason: str) -> None:
         a["pick_reason"] = reason
         picked[a["id"]] = a
 
+    used: dict[str, int] = defaultdict(int)
     for a in events:                                     # events 는 이미 점수순
-        direct = [t for t in rule.get("must_topics", []) if ranking.match_topic(t, a, cfg) == "title"]
-        if direct and len(picked) < limit:
+        direct = ranking.direct_topics(a, cfg)
+        if not direct:
+            continue
+        free = [t for t in direct if t not in caps]      # 상한이 없는 주제(비스마야 등)는 항상 포함
+        open_ = [t for t in direct if t in caps and used[t] < caps[t]]
+        if free or open_:
+            for t in direct:
+                used[t] += 1
             take(a, "관심 주제 직접 보도")
-    floor = float(rule.get("min_score", 0))
-    queues = {c: [a for a in events if a["category"] == c and a["id"] not in picked and a["score"] >= floor]
-              for c in rule.get("categories", [])}
-    while len(picked) < limit and any(queues.values()):
-        for cat, queue in queues.items():
-            if queue and len(picked) < limit:
-                take(queue.pop(0), f"{cat} 분야 상위")
-    for a in events:                                     # 그래도 자리가 남으면 나머지에서 점수순
-        if len(picked) >= limit:
-            break
-        if a["id"] not in picked:
-            take(a, "점수 상위")
+        else:
+            over_cap.add(a["id"])
+    theme_cap = round(int(rule.get("theme_cap", 0)) * scale)
+    for section, quota in (rule.get("quota") or {}).items():
+        pool = [a for a in events if a["id"] not in picked and a["id"] not in over_cap
+                and a["score"] >= floor and ranking.section_of(a, cfg) == section]
+        seen: dict[str, int] = defaultdict(int)
+        taken = 0
+        for a in pool:
+            if taken >= round(int(quota) * scale):
+                break
+            capped = {t["id"]: round(int(t["cap"]) * scale) if "cap" in t else theme_cap for t in ranking.match_themes(a, cfg)
+                      if "cap" in t or "floor" not in t}
+            if any(cap and seen[t] >= cap for t, cap in capped.items()):
+                continue                                 # 같은 사안이 이미 충분히 들어갔다
+            for t in capped:
+                seen[t] += 1
+            take(a, f"{section} 구역 상위")          # 정원은 limit 을 넘더라도 채운다
+            taken += 1
+    for skip_over_cap in (True, False):                  # 남는 자리: 먼저 일반 사건, 그래도 남으면 상한 초과분
+        for a in events:
+            if len(picked) >= limit:
+                break
+            if a["id"] not in picked and not (skip_over_cap and a["id"] in over_cap):
+                take(a, "점수 상위")
     for a in events:                                     # 선택한 기사는 제한과 무관하게 남긴다
         if a["id"] not in picked and (a["selected"] or any(r["selected"] for r in a["related"])):
             take(a, "선택한 기사")
@@ -204,7 +238,7 @@ def dashboard_list(conn, d_from: str, d_to: str, f: dict, show_all: bool, demo: 
                            demo=demo)
     if show_all or any(f.get(k) for k in NARROWING):
         return events, len(events), False
-    shown = pick_recommended(events)
+    shown = pick_recommended(events, scale=period_scale(d_from, d_to))
     return shown, len(events), len(shown) < len(events)
 
 
@@ -238,16 +272,13 @@ def split_article(conn, article_id: int) -> None:
         conn.execute("INSERT OR IGNORE INTO event_splits (a, b) VALUES (?,?)", (min(o, article_id), max(o, article_id)))
 
 
-SECTION_ORDER = [("정치", ("정치",)), ("치안 · 테러", ("치안", "테러")), ("경제", ("경제",)), ("국제", ("국제",)), ("기타", ("기타", ""))]
+SECTION_ORDER = [ranking.FOCUS, "정치", "치안 · 테러", "경제", "국제", "기타"]
 
 
 def sections(events: list[dict], cfg: dict | None = None) -> list[tuple[str, list[dict]]]:
-    """보고서처럼 구역별로 나눈다. 관심 주제를 제목에서 직접 다룬 기사는 맨 위 구역에 모은다."""
+    """보고서처럼 구역별로 나눈다. 구역 판정은 추천 선별과 같은 규칙(ranking.section_of)을 쓴다."""
     cfg = cfg or topics_config()
-    must = (cfg.get("recommend") or {}).get("must_topics", [])
-    focus = [a for a in events if any(ranking.match_topic(t, a, cfg) == "title" for t in must)]
-    taken = {a["id"] for a in focus}
-    out = [("관심 주제", focus)]
-    for title, cats in SECTION_ORDER:
-        out.append((title, [a for a in events if a["id"] not in taken and (a["category"] or "") in cats]))
-    return [(t, items) for t, items in out if items]
+    by: dict[str, list[dict]] = defaultdict(list)
+    for a in events:
+        by[ranking.section_of(a, cfg)].append(a)
+    return [(name, by[name]) for name in SECTION_ORDER if by[name]]
