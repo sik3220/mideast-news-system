@@ -85,3 +85,11 @@ table.form td,table.form th{padding:3px 6px;text-align:center;font-size:13.5px}t
 .item .tag{background:#fbe3d3;color:#7a3208;border-radius:4px;padding:0 6px}
 .item details{flex-basis:auto}.item details summary{cursor:pointer}
 .item details[open]{flex-basis:100%}.item details ul{margin:4px 0 0;padding-left:18px;font-size:13.5px}.item details li{margin:2px 0}
+
+/* 구역 선택 줄: 스크롤해도 화면 위에 붙어 있다 */
+.secnav{position:sticky;top:0;z-index:5;display:flex;gap:6px;flex-wrap:wrap;padding:8px 0;margin-bottom:6px;background:var(--bg);border-bottom:1px solid var(--line)}
+.secnav button{border-radius:8px;padding:7px 14px;font-weight:600;background:#fff}
+.secnav button span{font-weight:400;color:var(--muted);margin-left:2px}
+.secnav button[aria-pressed=true]{background:#22201c;color:#fff;border-color:#22201c}
+.secnav button[aria-pressed=true] span{color:#d9d6cd}
+.group[hidden]{display:none}

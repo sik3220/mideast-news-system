@@ -105,8 +105,14 @@
 </div>
 
 {% if sections %}
+  <nav class="secnav" id="secnav" aria-label="구역 선택">
+    <button type="button" data-sec="" aria-pressed="true">전체 <span>{{ articles|length }}</span></button>
+    {% for title, items in sections %}
+    <button type="button" data-sec="{{ title }}" aria-pressed="false">{{ title }} <span>{{ items|length }}</span></button>
+    {% endfor %}
+  </nav>
   {% for title, items in sections %}
-  <section class="group">
+  <section class="group" data-sec="{{ title }}">
     <h2>{{ title }}</h2>
     {% for a in items %}{{ item(a, qs) }}{% endfor %}
   </section>
@@ -120,4 +126,23 @@
     {% endif %}
   </div>
 {% endif %}
+{% endblock %}
+
+{% block script %}
+<script>
+// 구역 선택: 상단에 고정된 버튼으로 한 구역만 골라 본다. 고른 구역은 이 창에서 기억한다.
+(() => {
+  const nav = document.getElementById('secnav'); if (!nav) return;
+  const groups = [...document.querySelectorAll('.group[data-sec]')];
+  const show = (sec) => {
+    if (sec && !groups.some(g => g.dataset.sec === sec)) sec = '';
+    groups.forEach(g => g.hidden = !!sec && g.dataset.sec !== sec);
+    nav.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sec === sec)));
+    try { sessionStorage.setItem('section', sec); } catch {}
+  };
+  nav.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { show(b.dataset.sec); window.scrollTo({top: 0}); } });
+  let saved = ''; try { saved = sessionStorage.getItem('section') || ''; } catch {}
+  show(saved);
+})();
+</script>
 {% endblock %}
