@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}이라크·중동 뉴스{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <h1>이라크·중동 업무 뉴스</h1>
+  <nav aria-label="주 메뉴">
+    <a href="/" {% if page == 'index' %}aria-current="page"{% endif %}>추천 기사</a>
+    <a href="/draft" {% if page == 'draft' %}aria-current="page"{% endif %}>보고서 초안</a>
+    <a href="/daily" {% if page == 'daily' %}aria-current="page"{% endif %}>일일 PPT</a>
+    <a href="/weekly" {% if page == 'weekly' %}aria-current="page"{% endif %}>주간 Word</a>
+  </nav>
+</header>
+{% if demo %}<div class="banner demo" role="status">데모 모드 — 화면의 기사는 가상 데이터이며 실제 뉴스가 아닙니다.</div>{% endif %}
+{% if not llm_ready %}<div class="banner setup" role="status">요약 설정 필요 — ANTHROPIC_API_KEY 가 없어 한국어 요약을 만들 수 없습니다. 원문 제목과 링크는 그대로 볼 수 있습니다.</div>{% endif %}
+<main>
+{% if msg %}<div class="msg" role="status">{{ msg }}</div>{% endif %}
+{% block body %}{% endblock %}
+</main>
+<script src="/static/app.js"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

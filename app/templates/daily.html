@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% set page = 'daily' %}
+{% block title %}일일 PPT{% endblock %}
+{% block body %}
+<section class="panel">
+  <form method="get" action="/daily" class="row">
+    <label>대상 날짜 (바그다드)<input type="date" name="date" value="{{ day }}"></label>
+    <button type="submit">날짜 바꾸기</button>
+    <span class="meta">양식 {{ version }} · {{ '저장된 편집본' if saved else '새 편집본 (아직 저장 안 함)' }}</span>
+  </form>
+  {% if not template_ok %}<div class="errbox">원본 양식 파일(doc_templates/daily_template.pptx)이 없어 PPTX 를 만들 수 없습니다.</div>{% endif %}
+</section>
+
+<form method="post" action="/daily/save" id="daily-form">
+<input type="hidden" name="date" value="{{ day }}">
+<input type="hidden" name="events_json" id="events-json">
+
+<section class="panel">
+  <h2 class="sec">1장 · 일일 테러 / 대테러 상황</h2>
+  <div class="grid2">
+    <div>
+      <div id="events"></div>
+      <button type="button" id="add-event">사건 추가</button>
+      <p class="hint">번호는 목록 순서대로 자동으로 붙고, 지도 표식과 목록 표식에 같은 번호가 들어갑니다.
+        문장은 원본처럼 “지역, 내용” 형태로 씁니다(예: Kirkuk州, …). 시각은 비워 둘 수 있습니다.</p>
+      <label>사건이 없는 날 목록 상자에 넣을 문구
+        <input type="text" name="no_event_text" value="{{ data.no_event_text }}"></label>
+      <p class="hint">원본 2건에는 사건이 없는 날의 예시가 없어 임시로 넣은 문구입니다. 실제 표기에 맞게 고쳐 주세요.</p>
+    </div>
+    <div>
+      {% if base_ok %}
+      <div class="map" id="map" aria-label="지도 표식 위치">
+        <img src="/daily/base.png" alt="원본 1장의 지도와 Baghdad 확대 지도">
+      </div>
+      <p class="hint" id="map-hint">사건의 <b>지도에서 위치 지정</b>을 누른 뒤 지도를 클릭하세요. 표식은 끌어서 옮기거나,
+        표식을 선택하고 화살표 키로 조금씩 옮길 수 있습니다. 위치는 자동 추정하지 않으며, 한 번 지정한 지역명의 위치는 기억해 두었다가 다음에 제안합니다.</p>
+      {% else %}
+      <div class="warnbox">지도 바탕 그림(doc_templates/daily_base_slide1.png)이 없습니다. <code>python scripts/render_base.py</code> 로 만들 수 있습니다(LibreOffice 필요).</div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="sec">2장 · 이라크 정세현황</h2>
+  <p class="hint">빈 줄로 항목을 나눕니다. 항목의 첫 줄이 머리줄, <code>*</code> 또는 <code>☞</code> 로 시작하는 줄이 하위 줄입니다.
+    머리줄 끝의 <code>(출처, 날짜)</code> 는 원본처럼 한 단계 작은 글자로 들어갑니다.</p>
+  <div class="grid2">
+    <label>정치 / 치안<textarea name="politics" rows="12" placeholder="11.10, 주체, 내용 (출처, 11.10)&#10;* 세부사항">{{ data.politics }}</textarea></label>
+    <label>경제 / 국제<textarea name="economy" rows="12" placeholder="11.10, 주체, 내용 (출처, 11.10)&#10;* 세부사항">{{ data.economy }}</textarea></label>
+  </div>
+  <button type="submit" name="action" value="import" style="margin-top:8px" {{ 'disabled' if not selected_count }}>
+    이 날짜에 선택한 기사 {{ selected_count }}건 가져오기</button>
+  <span class="meta">본문 끝에 덧붙입니다. 기존 내용은 지우지 않습니다.</span>
+</section>
+
+<section class="panel">
+  <div class="row">
+    <button type="submit" name="action" value="save">편집본 저장</button>
+    <button class="primary" type="submit" name="action" value="generate" {{ 'disabled' if not template_ok }}>저장하고 PPTX 생성</button>
+  </div>
+  <h3 class="sub">생성 이력</h3>
+  {% if history %}
+  <ul class="plain">
+    {% for h in history %}
+    <li>{{ h.created_at|local }} (바그다드) · 양식 {{ h.template_version }}
+      · <a href="/files/{{ h.id }}">PPTX 내려받기</a>
+      {% if preview_ready %} · <a href="/files/{{ h.id }}/preview" target="_blank" rel="noopener">검토용 미리보기</a>{% endif %}
+      {% if h.warnings %}<div class="warnbox"><b>확인할 점</b><ul class="plain">{% for w in h.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if preview_ready %}<p class="hint">미리보기는 LibreOffice 로 그린 검토용 화면입니다. 글꼴과 줄바꿈이 PowerPoint 와 다를 수 있으니 최종 확인은 PowerPoint 에서 하세요.</p>
+  {% else %}<p class="hint">미리보기 제한: 이 컴퓨터에 LibreOffice 가 없어 화면 미리보기를 만들 수 없습니다. 파일을 내려받아 PowerPoint 에서 확인하세요.</p>{% endif %}
+  {% else %}<p class="hint">아직 만든 파일이 없습니다.</p>{% endif %}
+</section>
+</form>
+{% endblock %}
+
+{% block script %}
+<script>
+const TYPES = {{ type_labels|tojson }}, COLORS = {{ type_colors|tojson }}, KNOWN = {{ locations|tojson }};
+let events = {{ data.events|tojson }};
+let arming = null;
+const box = document.getElementById('events'), map = document.getElementById('map');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fill = t => '#' + COLORS[t] + '80';
+
+function render() {
+  box.innerHTML = events.map((e, i) => `
+    <div class="ev" data-i="${i}">
+      <span class="no" style="background:${fill(e.type)}">${i + 1}</span>
+      <input type="time" value="${esc(e.time)}" data-f="time" aria-label="사건 ${i + 1} 시각">
+      <input type="text" value="${esc(e.text)}" data-f="text" placeholder="지역, 내용" aria-label="사건 ${i + 1} 문장">
+      <select data-f="type" aria-label="사건 ${i + 1} 유형">${Object.entries(TYPES).map(([k, v]) =>
+        `<option value="${k}" ${e.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <div class="line2">
+        <input type="text" value="${esc(e.place)}" data-f="place" placeholder="지역명 (위치 기억용)" list="places" aria-label="사건 ${i + 1} 지역명">
+        <button type="button" data-act="arm">${arming === i ? '지도를 클릭하세요…' : '지도에서 위치 지정'}</button>
+        <span>${e.x == null ? '<b style="color:#a12626">위치 미지정</b>' : '위치 지정됨'}</span>
+        ${KNOWN[e.place] && e.x == null ? '<button type="button" data-act="recall">기억한 위치 사용</button>' : ''}
+        <button type="button" data-act="up" ${i === 0 ? 'disabled' : ''} aria-label="위로">↑</button>
+        <button type="button" data-act="down" ${i === events.length - 1 ? 'disabled' : ''} aria-label="아래로">↓</button>
+        <button type="button" data-act="del">삭제</button>
+      </div>
+    </div>`).join('') + `<datalist id="places">${Object.keys(KNOWN).map(k => `<option value="${esc(k)}">`).join('')}</datalist>`;
+  if (!events.length) box.insertAdjacentHTML('afterbegin', '<p class="hint">등록한 사건이 없습니다.</p>');
+  drawMarkers();
+}
+function drawMarkers() {
+  if (!map) return;
+  map.querySelectorAll('.mk').forEach(m => m.remove());
+  map.classList.toggle('arming', arming !== null);
+  events.forEach((e, i) => {
+    if (e.x == null) return;
+    const m = document.createElement('div');
+    m.className = 'mk'; m.textContent = i + 1; m.tabIndex = 0; m.dataset.i = i;
+    m.setAttribute('role', 'button'); m.setAttribute('aria-label', `사건 ${i + 1} 표식. 화살표 키로 이동`);
+    m.style.cssText = `left:${e.x * 100}%;top:${e.y * 100}%;background:${fill(e.type)}`;
+    map.appendChild(m);
+  });
+}
+const pos = ev => { const r = map.getBoundingClientRect();
+  return {x: Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height))}; };
+
+box.addEventListener('input', ev => {
+  const row = ev.target.closest('.ev'); if (!row || !ev.target.dataset.f) return;
+  events[+row.dataset.i][ev.target.dataset.f] = ev.target.value;
+  if (ev.target.dataset.f === 'type') render();
+});
+box.addEventListener('change', ev => { if (ev.target.dataset.f === 'place') render(); });
+box.addEventListener('click', ev => {
+  const btn = ev.target.closest('button[data-act]'); if (!btn) return;
+  const i = +btn.closest('.ev').dataset.i, act = btn.dataset.act;
+  if (act === 'del') { events.splice(i, 1); arming = null; }
+  if (act === 'up') [events[i - 1], events[i]] = [events[i], events[i - 1]];
+  if (act === 'down') [events[i + 1], events[i]] = [events[i], events[i + 1]];
+  if (act === 'arm') arming = arming === i ? null : i;
+  if (act === 'recall') Object.assign(events[i], KNOWN[events[i].place]);
+  render();
+});
+document.getElementById('add-event').addEventListener('click', () => {
+  events.push({time: '', place: '', text: '', type: 'terror'}); render();
+  box.querySelector('.ev:last-of-type input[data-f=text]')?.focus();
+});
+if (map) {
+  let drag = null;
+  map.addEventListener('pointerdown', ev => {
+    const m = ev.target.closest('.mk');
+    if (m) { drag = +m.dataset.i; map.setPointerCapture(ev.pointerId); ev.preventDefault(); return; }
+    if (arming !== null) { Object.assign(events[arming], pos(ev)); arming = null; render(); }
+  });
+  map.addEventListener('pointermove', ev => { if (drag !== null) { Object.assign(events[drag], pos(ev)); drawMarkers(); } });
+  map.addEventListener('pointerup', () => { if (drag !== null) { drag = null; render(); } });
+  map.addEventListener('keydown', ev => {
+    const m = ev.target.closest('.mk'); if (!m) return;
+    const d = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[ev.key]; if (!d) return;
+    ev.preventDefault();
+    const e = events[+m.dataset.i], step = ev.shiftKey ? 0.02 : 0.004;
+    e.x = Math.min(1, Math.max(0, e.x + d[0] * step)); e.y = Math.min(1, Math.max(0, e.y + d[1] * step));
+    drawMarkers(); map.querySelector(`.mk[data-i="${m.dataset.i}"]`)?.focus();
+  });
+}
+document.getElementById('daily-form').addEventListener('submit', () => {
+  document.getElementById('events-json').value = JSON.stringify(events);
+});
+render();
+</script>
+{% endblock %}

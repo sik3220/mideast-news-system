@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% set page = 'index' %}
+{% block title %}{{ a.ko_title or a.title }}{% endblock %}
+{% block body %}
+<p><a href="/?{{ back_qs }}">← 목록으로</a></p>
+<section class="panel">
+  <h2 class="sec" style="font-size:19px">{{ a.ko_title or a.title }}</h2>
+  <p class="orig" dir="auto" lang="{{ a.lang }}"><b>원문 제목</b> {{ a.title }}</p>
+  <p class="meta">
+    {{ a.source_name or a.source_domain or '출처 미상' }} · 발표 {{ a|when }} · 수집 {{ a.first_seen_at|local }} (바그다드)
+    {% if a.lang %} · {{ lang_names.get(a.lang, a.lang) }}{% endif %} · 검색 경로 {{ a.provider }}
+  </p>
+  <p><a class="btn primary" href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문 열기</a>
+    <label class="inline" style="display:inline-flex;margin-left:12px">
+      <input type="checkbox" data-select="{{ a.id }}" {{ 'checked' if a.selected }}> 보고서에 쓸 기사로 선택</label></p>
+  <div class="chips">
+    <span class="chip cat">{{ a.category or '기타' }}</span><span class="chip">{{ a.region }}</span>
+    {% for t in a.topics %}<span class="chip topic">{{ topics[t] }}</span>{% endfor %}
+  </div>
+
+  <h3 class="sub">사실 확인 상태</h3>
+  <div class="chips">
+    {% for v in a.verification %}<span class="chip {{ 'warn' if '미확인' in v or '미상' in v else '' }}">{{ v }}</span>{% endfor %}
+    {% if a.stage %}<span class="chip">단계: {{ a.stage }}</span>{% endif %}
+  </div>
+  <p class="hint">원문 본문은 가져오지 않습니다. 요약은 {{ '제목과 검색 요약' if a.snippet else '제목' }}만을 근거로 하며, 세부 내용은 원문에서 확인해야 합니다.
+    추천 점수는 중요도이고 사실 확인 여부와 별개입니다.</p>
+  {% if a.summary_flags %}<div class="errbox"><b>요약 점검</b><ul class="plain">{% for f in a.summary_flags %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
+
+  <h3 class="sub">추천 이유 <span class="meta">(점수 {{ a.score|int }})</span></h3>
+  <ul class="plain">{% for r in a.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+
+  {% if a.snippet %}<h3 class="sub">검색 요약 (원문 언어)</h3><p class="orig" dir="auto">{{ a.snippet }}</p>{% endif %}
+
+  <h3 class="sub">한국어 제목·요약</h3>
+  {% if a.summary_status == 'failed' %}<div class="errbox">요약 실패: {{ a.summary_error }} — 원문 정보는 그대로 있습니다. 다시 시도하거나 직접 작성할 수 있습니다.</div>{% endif %}
+  {% if a.summary_status == 'ok' %}<p class="hint">근거: {{ a.summary_basis }}</p>{% endif %}
+  <form method="post" action="/article/{{ a.id }}/edit">
+    <input type="hidden" name="back_qs" value="{{ back_qs }}">
+    <label>한국어 제목<input type="text" name="ko_title" value="{{ a.ko_title or '' }}"></label>
+    <label style="margin-top:8px">한국어 요약<textarea name="ko_summary" rows="3">{{ a.ko_summary or '' }}</textarea></label>
+    <div class="row" style="margin-top:8px">
+      <label>분류<select name="category">{% for c in categories %}<option {{ 'selected' if a.category == c }}>{{ c }}</option>{% endfor %}</select></label>
+      <label style="flex:1">메모<input type="text" name="note" value="{{ a.note }}"></label>
+      <button type="submit">직접 수정 저장</button>
+    </div>
+  </form>
+  <form method="post" action="/article/{{ a.id }}/summarize" style="margin-top:10px" data-busy>
+    <input type="hidden" name="back_qs" value="{{ back_qs }}">
+    <button type="submit" {{ 'disabled' if not llm_ready }}>{{ '다시 요약' if a.summary_status == 'ok' else 'Claude 로 요약 만들기' }}</button>
+    {% if not llm_ready %}<span class="meta">요약 설정 필요 (ANTHROPIC_API_KEY)</span>{% else %}<span class="meta">모델 {{ llm_model }}</span>{% endif %}
+    <span class="spinner" role="status">요약 중…</span>
+  </form>
+
+  {% if a.followups %}<h3 class="sub">후속 확인 사항</h3><ul class="plain">{% for f in a.followups %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+
+  <h3 class="sub">관련 기사 (같은 사건으로 묶임)</h3>
+  {% if related %}
+  <ul class="plain">{% for r in related %}
+    <li><a href="/article/{{ r.id }}?back={{ back_qs|urlencode }}" dir="auto">{{ r.ko_title or r.title }}</a>
+      <span class="meta">— {{ r.source_name or r.source_domain }} · {{ r|when }}</span></li>{% endfor %}</ul>
+  <p class="hint">묶음은 제목 유사도와 날짜로 보수적으로 만든 것입니다. 내용이 서로 다르면 각 기사를 따로 확인하세요.</p>
+  {% else %}<p class="hint">같은 사건으로 묶인 다른 기사가 없습니다.</p>{% endif %}
+</section>
+{% endblock %}

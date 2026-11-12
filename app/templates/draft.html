@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set page = 'draft' %}
+{% block title %}보고서 초안{% endblock %}
+{% block body %}
+<section class="panel">
+  <form method="get" action="/draft" class="row">
+    <label>시작일 (바그다드)<input type="date" name="from" value="{{ d_from }}"></label>
+    <label>종료일 (바그다드)<input type="date" name="to" value="{{ d_to }}"></label>
+    <button type="submit">기간 바꾸기</button>
+  </form>
+</section>
+<div class="grid2">
+  <section class="panel">
+    <h2 class="sec">선택한 기사 {{ selected|length }}건</h2>
+    {% if selected %}
+    <ul class="plain">
+      {% for a in selected %}
+      <li><span class="chip cat">{{ a.category or '기타' }}</span>
+        <a href="/article/{{ a.id }}" dir="auto">{{ a.ko_title or a.title }}</a>
+        <span class="meta">— {{ a.source_name or a.source_domain }} · {{ a|when }}{% if not a.ko_title %} · 한국어 요약 없음{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint">이 기간에 선택한 기사가 없습니다. <a href="/?from={{ d_from }}&to={{ d_to }}">추천 기사</a>에서 체크하세요.</p>
+    {% endif %}
+    <form method="post" action="/draft/generate" style="margin-top:12px">
+      <input type="hidden" name="d_from" value="{{ d_from }}"><input type="hidden" name="d_to" value="{{ d_to }}">
+      {% if draft and draft.content.strip() %}
+      <label class="inline"><input type="checkbox" name="confirm" value="1"> 지금 초안을 이력에 보존하고 새로 만들기</label>
+      {% endif %}
+      <button class="primary" type="submit" style="margin-top:8px" {{ 'disabled' if not selected }}>선택한 기사로 초안 만들기</button>
+    </form>
+    <p class="hint">초안은 선택한 기사의 한국어 제목·요약을 형식에 맞춰 조립한 것입니다. 보고서에 반영할지는 직접 판단하세요.</p>
+    {% if history %}
+    <h3 class="sub">이전 내용 (최근 {{ history|length }}건)</h3>
+    {% for h in history %}
+    <details><summary>{{ h.saved_at|local }} · {{ h.reason }}</summary><textarea rows="8" readonly aria-label="이전 초안">{{ h.content }}</textarea></details>
+    {% endfor %}
+    {% endif %}
+  </section>
+  <section class="panel">
+    <h2 class="sec">초안 편집</h2>
+    <form method="post" action="/draft/save">
+      <input type="hidden" name="d_from" value="{{ d_from }}"><input type="hidden" name="d_to" value="{{ d_to }}">
+      <label class="sr" for="draft-text">초안 본문</label>
+      <textarea id="draft-text" name="content" rows="28">{{ draft.content if draft else '' }}</textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="primary" type="submit">저장</button>
+        <button type="button" data-copy="#draft-text">전체 복사</button>
+        {% if draft %}<span class="meta">마지막 저장 {{ draft.updated_at|local }} (바그다드)</span>{% endif %}
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% set page = 'weekly' %}
+{% block title %}주간 Word{% endblock %}
+{% block body %}
+<section class="panel">
+  <form method="get" action="/weekly" class="row">
+    <label>대상 기간 시작일 (바그다드)<input type="date" name="start" value="{{ start }}"></label>
+    <button type="submit">기간 바꾸기</button>
+    <span class="meta">양식 {{ version }} · {{ '저장된 편집본' if saved else '새 편집본 (아직 저장 안 함)' }}</span>
+  </form>
+  {% if data.carried and not saved %}<p class="hint">국제사회 소제목과 ‘그룹 / 건설에 미치는 영향’은 직전 주 편집본에서 가져온 출발점입니다. 이번 주 상황에 맞게 고쳐 주세요.</p>{% endif %}
+  {% if not template_ok %}<div class="errbox">원본 양식 파일(doc_templates/weekly_template.docx)이 없어 DOCX 를 만들 수 없습니다.</div>{% endif %}
+</section>
+
+<form method="post" action="/weekly/save">
+<input type="hidden" name="start" value="{{ start }}">
+<section class="panel">
+  <div class="row">
+    <label>기간 시작<input type="date" name="period_start" value="{{ data.period_start }}" required></label>
+    <label>기간 종료<input type="date" name="period_end" value="{{ data.period_end }}" required></label>
+    <label>작성일<input type="date" name="report_date" value="{{ data.report_date }}" required></label>
+    <button type="submit" name="action" value="import" {{ 'disabled' if not selected_count }}>기간 내 선택한 기사 {{ selected_count }}건 가져오기</button>
+  </div>
+  <p class="hint">빈 줄로 항목을 나눕니다. 첫 줄이 머리줄(<code>11.5, 주체, 내용</code>), <code>*</code> 는 세부사항, <code>☞</code> 는 평가·후속 줄입니다.
+    하위 줄은 원본처럼 줄 길이에 맞춰 끊어 넣습니다. 가져오기는 각 구역 끝에 덧붙이며 기존 내용을 지우지 않습니다.</p>
+</section>
+
+<section class="panel">
+  <h2 class="sec">1. 이라크 국내 상황 — 정국 / 치안</h2>
+  <label>정치권 동향<textarea name="politics" rows="12">{{ data.politics }}</textarea></label>
+
+  <h3 class="sub">이라크 주간 테러 상황 (유형별 건수)</h3>
+  <table class="form" aria-label="주간 테러 통계">
+    <tr><th>계</th>{% for k, label in stat_fields %}<th><label for="stat_{{ k }}">{{ label }}</label></th>{% endfor %}</tr>
+    <tr><td><output id="stat-total" aria-live="polite">{{ total if total is not none else '–' }}</output></td>
+      {% for k, label in stat_fields %}<td><input type="number" min="0" step="1" id="stat_{{ k }}" name="stat_{{ k }}" value="{{ data.stats.get(k, '') }}" data-stat></td>{% endfor %}</tr>
+  </table>
+  <label style="margin-top:6px">집계 근거 (어떤 자료·기준으로 센 것인지)<input type="text" name="stats_basis" value="{{ data.stats_basis }}"></label>
+  <p class="hint">건수는 직접 입력합니다. ‘계’는 입력값의 합으로 자동 계산됩니다. 추천 기사 수는 주간 사건 집계가 아니므로 자동으로 채우지 않습니다. 해당 유형이 없으면 0 을 넣으세요.</p>
+  <label>사건 상세<textarea name="terror" rows="7">{{ data.terror }}</textarea></label>
+</section>
+
+<section class="panel">
+  <h2 class="sec">경제 — 국제유가 관련 동향</h2>
+  <label>유가 동향 설명<textarea name="oil" rows="5">{{ data.oil }}</textarea></label>
+  <table class="form" aria-label="유가 표" id="oil-table">
+    <tr><th>날짜 (예: 11.10)</th>{% for k, label in oil_fields %}<th>{{ label }} ($)</th>{% endfor %}</tr>
+    {% for row in data.oil_prices %}
+    <tr><td><input type="text" name="oil_date" value="{{ row.date }}" aria-label="날짜"></td>
+      {% for k, label in oil_fields %}<td><input type="text" inputmode="decimal" name="oil_{{ k }}" value="{{ row[k] }}" aria-label="{{ label }}"></td>{% endfor %}</tr>
+    {% endfor %}
+  </table>
+  <button type="button" id="add-oil">행 추가</button>
+  <label style="margin-top:6px">유가 출처·가격 기준 (예: 어느 기관의 종가인지)<input type="text" name="oil_source" value="{{ data.oil_source }}"></label>
+  <p class="hint">가격은 직접 입력한 값만 표에 들어갑니다. 비어 있으면 문서를 만들지 않습니다. 원본은 최근 2일을 싣습니다.</p>
+</section>
+
+<section class="panel">
+  <h2 class="sec">2. 국제사회</h2>
+  <div id="intl">
+    {% for g in data.intl %}
+    <div class="intl-group" style="margin-bottom:10px">
+      <label>주제 소제목 (예: 美·이스라엘-이란 분쟁 관련)<input type="text" name="intl_title" value="{{ g.title }}"></label>
+      <label>항목<textarea name="intl_body" rows="9">{{ g.body }}</textarea></label>
+    </div>
+    {% endfor %}
+  </div>
+  <button type="button" id="add-intl">주제 추가</button>
+</section>
+
+<section class="panel">
+  <h2 class="sec">3. 그룹 / 건설에 미치는 영향</h2>
+  <label>빈 줄로 문단을 나눕니다<textarea name="impact" rows="6">{{ data.impact }}</textarea></label>
+  <p class="hint">이 구역은 사실 요약이 아니라 분석·판단입니다. 직접 작성합니다.</p>
+</section>
+
+<section class="panel">
+  {% if errors %}<div class="errbox"><b>생성 전에 채워야 할 입력</b><ul class="plain">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if warnings %}<div class="warnbox"><b>확인할 점</b><ul class="plain">{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+  <div class="row">
+    <button type="submit" name="action" value="save">편집본 저장</button>
+    <button class="primary" type="submit" name="action" value="generate" {{ 'disabled' if not template_ok }}>저장하고 DOCX 생성</button>
+  </div>
+  <h3 class="sub">생성 이력</h3>
+  {% if history %}
+  <ul class="plain">
+    {% for h in history %}
+    <li>{{ h.created_at|local }} (바그다드) · 양식 {{ h.template_version }}
+      · <a href="/files/{{ h.id }}">DOCX 내려받기</a>
+      {% if preview_ready %} · <a href="/files/{{ h.id }}/preview" target="_blank" rel="noopener">검토용 미리보기</a>{% endif %}
+      {% if h.warnings %}<div class="warnbox"><b>확인할 점</b><ul class="plain">{% for w in h.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if preview_ready %}<p class="hint">미리보기는 LibreOffice 로 그린 검토용 화면입니다. 글꼴·줄바꿈·쪽 나눔이 Word 와 다를 수 있으니 최종 확인은 Word 에서 하세요.</p>
+  {% else %}<p class="hint">미리보기 제한: 이 컴퓨터에 LibreOffice 가 없어 화면 미리보기를 만들 수 없습니다. 파일을 내려받아 Word 에서 확인하세요.</p>{% endif %}
+  {% else %}<p class="hint">아직 만든 파일이 없습니다.</p>{% endif %}
+</section>
+</form>
+{% endblock %}
+
+{% block script %}
+<script>
+const total = document.getElementById('stat-total');
+function sum() {
+  const vals = [...document.querySelectorAll('[data-stat]')].map(i => i.value.trim());
+  total.textContent = vals.every(v => /^\d+$/.test(v)) ? vals.reduce((a, v) => a + +v, 0) : '–';
+}
+document.querySelectorAll('[data-stat]').forEach(i => i.addEventListener('input', sum));
+document.getElementById('add-oil').addEventListener('click', () => {
+  const rows = document.querySelectorAll('#oil-table tr'), row = rows[rows.length - 1].cloneNode(true);
+  row.querySelectorAll('input').forEach(i => i.value = '');
+  document.querySelector('#oil-table tbody').appendChild(row);
+});
+document.getElementById('add-intl').addEventListener('click', () => {
+  const g = document.querySelector('.intl-group').cloneNode(true);
+  g.querySelectorAll('input,textarea').forEach(i => i.value = '');
+  document.getElementById('intl').appendChild(g);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+data/
+.pytest_cache/
+# 원본 양식과 거기서 만든 지도 그림은 저장소에 올리지 않는다 (README 의 "문서 양식" 참조)
+doc_templates/*
+!doc_templates/README.md
