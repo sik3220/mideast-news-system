@@ -34,7 +34,7 @@
       <li><input type="checkbox" data-select="{{ r.id }}" id="pick{{ r.id }}" {{ 'checked' if r.selected }}>
         <label for="pick{{ r.id }}" class="sr">선택</label>
         <a href="/article/{{ r.id }}?back={{ qs|urlencode }}" dir="auto">{{ r.ko_title or r.title }}</a>
-        <span class="meta">— {{ r.source_name or r.source_domain }} · {{ r|when }}</span></li>
+        <span class="meta">— {{ r.source_name or r.source_domain }} · {{ r|when }}{% if r.group_note %} · {{ r.group_note }}{% endif %}</span></li>
     {% endfor %}
     </ul>
   </details>
@@ -106,11 +106,15 @@
       {% else %}조건에 맞는 {{ matched }}건 표시{% endif %}
       · 저장된 기사 {{ total }}건 · 선택 <b data-selected-count>{{ selected_count }}</b>건
       · <a href="/draft?from={{ d_from }}&to={{ d_to }}">선택한 기사로 초안 만들기</a></div>
+    <form method="post" action="/events/merge">
+      <input type="hidden" name="d_from" value="{{ d_from }}"><input type="hidden" name="d_to" value="{{ d_to }}">
+      <button type="submit" title="같은 일을 다룬 기사가 따로 나올 때, 그 기사들을 체크하고 누르세요">체크한 기사를 같은 사건으로 묶기</button>
+    </form>
     <form method="post" action="/summarize" data-busy>
       <input type="hidden" name="from" value="{{ d_from }}"><input type="hidden" name="to" value="{{ d_to }}">
       {% for k in ['q','category','region','topic','selected'] %}<input type="hidden" name="{{ k }}" value="{{ f[k] }}">{% endfor %}
       <input type="hidden" name="all" value="{{ '1' if show_all else '' }}">
-      <button type="submit" {{ 'disabled' if not llm_ready or not unsummarized }}>보이는 기사 한국어 요약</button>
+      <button type="submit" {{ 'disabled' if not llm_ready or not unsummarized }}>보이는 기사 요약·중복 묶기</button>
       <span class="meta">미요약 {{ unsummarized }}건 · 한 번에 최대 {{ batch }}건</span>
       <span class="spinner" role="status">요약 중입니다…</span>
     </form>

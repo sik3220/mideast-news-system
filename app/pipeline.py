@@ -206,3 +206,33 @@ def dashboard_list(conn, d_from: str, d_to: str, f: dict, show_all: bool, demo: 
         return events, len(events), False
     shown = pick_recommended(events)
     return shown, len(events), len(shown) < len(events)
+
+
+def splits(conn) -> set[tuple[int, int]]:
+    return {(r["a"], r["b"]) for r in conn.execute("SELECT a, b FROM event_splits")}
+
+
+def merge_events(conn, article_ids: list[int], note: str) -> int:
+    """기사들이 속한 사건을 하나로 합친다. 원본 기사는 그대로 두고 사건 번호만 바꾼다. 반환: 합쳐 없어진 사건 수."""
+    rows = {r["id"]: r["event_id"] or r["id"] for r in conn.execute(
+        f"SELECT id, event_id FROM articles WHERE id IN ({','.join('?' * len(article_ids))})", article_ids)}
+    events = list(dict.fromkeys(rows.values()))
+    if len(events) < 2:
+        return 0
+    target = min(events)
+    for e in events:
+        if e != target:
+            conn.execute("UPDATE articles SET event_id=?, group_note=? WHERE event_id=? OR id=?", (target, note, e, e))
+    return len(events) - 1
+
+
+def split_article(conn, article_id: int) -> None:
+    """기사 하나를 묶음에서 떼어 독립 사건으로 만들고, 자동 묶기가 다시 합치지 않게 기록한다."""
+    row = conn.execute("SELECT event_id FROM articles WHERE id=?", (article_id,)).fetchone()
+    event = row["event_id"] or article_id
+    others = [r["id"] for r in conn.execute("SELECT id FROM articles WHERE event_id=? AND id<>?", (event, article_id))]
+    if event == article_id and others:           # 대표 기사를 떼면 남은 기사들에 새 사건 번호를 준다
+        conn.execute("UPDATE articles SET event_id=? WHERE event_id=? AND id<>?", (min(others), event, article_id))
+    conn.execute("UPDATE articles SET event_id=?, group_note=NULL WHERE id=?", (article_id, article_id))
+    for o in others:
+        conn.execute("INSERT OR IGNORE INTO event_splits (a, b) VALUES (?,?)", (min(o, article_id), max(o, article_id)))

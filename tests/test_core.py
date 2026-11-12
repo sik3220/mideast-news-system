@@ -325,7 +325,8 @@ class FakeLLM:
         text = kw["messages"][0]["content"]
         if kw["output_format"] is llm.EventGroups:
             self.group_calls += 1
-            return SimpleNamespace(stop_reason="end_turn", parsed_output=llm.EventGroups(groups=self.groups(text)))
+            groups = [llm.EventGroup(ids=g, reason="같은 일") for g in self.groups(text)]
+            return SimpleNamespace(stop_reason="end_turn", parsed_output=llm.EventGroups(groups=groups))
         self.summary_calls += 1
         title = next(ln for ln in text.splitlines() if ln.startswith("제목: "))[4:]
         if any(f in title for f in self.fail_titles):
@@ -374,7 +375,9 @@ def test_same_event_articles_are_merged_and_slot_is_refilled(conn):
 def test_grouping_answer_is_validated():
     arts = [dict(make_article(), id=1, published_date="2026-11-10"), dict(make_article(), id=2, published_date="2026-11-11"),
             dict(make_article(), id=3, published_date="2026-11-20"), dict(make_article(), id=4, published_date="2026-11-10")]
-    assert llm.valid_groups([[1, 2, 3, 99], [2, 4], [4]], arts) == [[1, 2]]   # 모르는 번호·먼 날짜·중복 사용·1건 묶음 제외
+    g = lambda *ids: llm.EventGroup(ids=list(ids), reason="같은 일")
+    assert llm.valid_groups([g(1, 2, 3, 99), g(2, 4), g(4)], arts) == [([1, 2], "같은 일")]   # 모르는 번호·먼 날짜·중복 사용·1건 묶음 제외
+    assert llm.valid_groups([g(1, 2, 4)], arts, splits={(1, 2)}) == [([1, 4], "같은 일")]      # 사용자가 떼어 놓은 쌍은 묶지 않는다
 
 
 def test_without_key_view_is_left_untouched(conn, monkeypatch):
@@ -392,3 +395,28 @@ def test_small_spelled_out_numbers_are_not_flagged_and_flags_are_unique():
                     category="정치", stage="해당없음", claim_type="공식 발표", followups=[])
     _, flags = llm.guard("مقررات جلسة مجلس الوزراء الاعتيادية السابعة والعشرين 2026", s)
     assert flags == ["숫자 확인 필요: ‘350’ 가 원문에 그대로 나오지 않음"]
+
+
+def test_manual_merge_and_split_are_respected_by_auto_grouping(conn):
+    from app import enrich
+    _many(conn, 4, "Iraq attack")
+    pipeline.recompute(conn)
+    ids = [a["id"] for a in pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)[0]]
+    assert pipeline.merge_events(conn, ids[:3], "직접 묶음") == 2
+    pipeline.recompute(conn)
+    shown, matched, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert matched == 2 and conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0] == 4   # 원본은 그대로
+    rep = next(a for a in shown if a["related"])
+    assert {r["group_note"] for r in rep["related"]} == {"직접 묶음"}
+
+    pipeline.split_article(conn, rep["id"])               # 대표 기사를 떼어도 나머지 묶음은 유지된다
+    pipeline.recompute(conn)
+    shown, matched, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert matched == 3 and sorted(len(a["related"]) for a in shown) == [0, 0, 1]
+
+    fake = FakeLLM(groups=lambda text: [ids])              # 모델이 전부 다시 묶으라고 해도
+    enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
+    events = {r["id"]: r["event_id"] for r in conn.execute("SELECT id, event_id FROM articles")}
+    former = [i for i in ids[:3] if i != rep["id"]]
+    assert events[former[0]] == events[former[1]]          # 직접 묶은 나머지 둘은 그대로 한 사건
+    assert events[rep["id"]] != events[former[0]]          # 떼어 놓은 기사는 예전 묶음으로 돌아가지 않는다

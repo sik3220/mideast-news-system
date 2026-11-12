@@ -125,6 +125,33 @@ async def select(article_id: int, request: Request):
     return JSONResponse({"ok": True, "selected_count": count})
 
 
+@app.post("/events/merge")
+def events_merge(d_from: str = Form(...), d_to: str = Form(...)):
+    """추천 화면에서 체크한 기사들을 같은 사건으로 직접 묶는다."""
+    with db.session() as conn:
+        ids = [a["id"] for a in _selected(conn, d_from, d_to)]
+        if len(ids) < 2:
+            return back("/", **{"from": d_from, "to": d_to, "msg": "묶으려면 이 기간의 기사를 2건 이상 체크하세요."})
+        for a in ids:                                  # 직접 묶으면 예전에 떼어 놓은 기록은 지운다
+            for b in ids:
+                if a < b:
+                    conn.execute("DELETE FROM event_splits WHERE a=? AND b=?", (a, b))
+        merged = pipeline.merge_events(conn, ids, "직접 묶음")
+        pipeline.recompute(conn, config.demo_mode())
+    msg = f"체크한 기사 {len(ids)}건을 같은 사건으로 묶었습니다." if merged else "이미 같은 사건으로 묶여 있습니다."
+    return back("/", **{"from": d_from, "to": d_to, "msg": msg})
+
+
+@app.post("/article/{article_id}/split")
+def article_split(article_id: int, back_qs: str = Form("")):
+    with db.session() as conn:
+        if not db.get_article(conn, article_id):
+            raise HTTPException(404)
+        pipeline.split_article(conn, article_id)
+        pipeline.recompute(conn, config.demo_mode())
+    return back(f"/article/{article_id}", back=back_qs, msg="묶음에서 뺐습니다. 자동 묶기가 다시 합치지 않습니다.")
+
+
 @app.get("/article/{article_id}")
 def article_page(article_id: int, request: Request):
     with db.session() as conn:

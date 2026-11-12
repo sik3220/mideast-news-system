@@ -59,7 +59,13 @@
   <ul class="plain">{% for r in related %}
     <li><a href="/article/{{ r.id }}?back={{ back_qs|urlencode }}" dir="auto">{{ r.ko_title or r.title }}</a>
       <span class="meta">— {{ r.source_name or r.source_domain }} · {{ r|when }}</span></li>{% endfor %}</ul>
-  <p class="hint">묶음은 제목 유사도와 날짜로 보수적으로 만든 것입니다. 내용이 서로 다르면 각 기사를 따로 확인하세요.</p>
+  {% if a.group_note %}<p class="hint">{{ a.group_note }}</p>{% endif %}
+  <form method="post" action="/article/{{ a.id }}/split">
+    <input type="hidden" name="back_qs" value="{{ back_qs }}">
+    <button type="submit">이 기사를 묶음에서 빼기</button>
+    <span class="meta">다른 일을 다룬 기사라면 빼세요. 뺀 기사는 자동으로 다시 묶이지 않습니다.</span>
+  </form>
+  <p class="hint">묶음은 제목 유사도 규칙과 Claude 의 판단(또는 직접 묶기)으로 만든 것입니다. 묶인 기사도 지워지지 않으며 여기서 각각 확인할 수 있습니다.</p>
   {% else %}<p class="hint">같은 사건으로 묶인 다른 기사가 없습니다.</p>{% endif %}
 </section>
 {% endblock %}

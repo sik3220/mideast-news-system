@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS generated_files (
   id INTEGER PRIMARY KEY, kind TEXT NOT NULL, key TEXT NOT NULL, filename TEXT NOT NULL,
   template_version TEXT NOT NULL, created_at TEXT NOT NULL, warnings TEXT NOT NULL DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS event_splits (   -- 사용자가 "같은 사건 아님"으로 떼어 놓은 기사 쌍 (a < b)
+  a INTEGER NOT NULL, b INTEGER NOT NULL, PRIMARY KEY (a, b)
+);
 CREATE TABLE IF NOT EXISTS locations (
   name TEXT PRIMARY KEY, x REAL NOT NULL, y REAL NOT NULL, updated_at TEXT NOT NULL
 );
@@ -82,6 +85,10 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    # 이전 버전으로 만든 DB 에 새 열을 더한다.
+    columns = {r["name"] for r in conn.execute("PRAGMA table_info(articles)")}
+    if "group_note" not in columns:
+        conn.execute("ALTER TABLE articles ADD COLUMN group_note TEXT")
     return conn
 
 
