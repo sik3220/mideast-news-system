@@ -246,7 +246,7 @@ def test_regenerating_preserves_previous_edit(conn):
 
 def test_copied_draft_has_links_and_unverified_marks(conn):
     db.upsert_article(conn, make_article("https://example.com/nic", "Iraq's NIC signs Bismayah annex with Hanwha"))
-    db.upsert_article(conn, make_article("https://example.com/oil", "Iraq oil exports rise"))
+    db.upsert_article(conn, make_article("https://example.com/oil", "Iraq oil"))
     pipeline.recompute(conn)
     conn.execute("UPDATE articles SET selected=1")
     selected = pipeline.list_articles(conn, "2026-11-10", "2026-11-10", selected_only=True)
@@ -258,9 +258,54 @@ def test_copied_draft_has_links_and_unverified_marks(conn):
 
 
 def test_draft_states_search_scope_when_no_bismayah_item(conn):
-    db.upsert_article(conn, make_article("https://example.com/oil", "Iraq oil exports rise"))
+    db.upsert_article(conn, make_article("https://example.com/oil", "Iraq oil"))
     pipeline.recompute(conn)
     conn.execute("UPDATE articles SET selected=1")
     selected = pipeline.list_articles(conn, "2026-11-10", "2026-11-10", selected_only=True)
     text = draft.build_report(selected, "2026-11-10", "2026-11-10", failed_sources=["gdelt · x"])
     assert draft.NOT_FOUND in text and "검색 실패 출처 1건" in text
+
+
+# ───────── 첫 화면 추천 선별 ─────────
+
+def _many(conn, n, title):
+    """제목이 서로 충분히 달라 한 사건으로 묶이지 않는 기사 n건."""
+    import hashlib
+    for i in range(n):
+        tail = hashlib.sha256(f"{title}{i}".encode()).hexdigest()[:40]
+        db.upsert_article(conn, make_article(f"https://example.com/{tail}", f"{title} {tail}"))
+
+
+def test_recommended_is_limited_and_balanced_across_categories(conn):
+    _many(conn, 40, "Iraq attack")                 # 치안이 압도적으로 많다
+    _many(conn, 5, "Iraq oil")                      # 경제
+    _many(conn, 5, "Iraq parliament")          # 정치
+    pipeline.recompute(conn)
+    shown, matched, trimmed = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert matched == 50 and trimmed and len(shown) == 20
+    cats = [a["category"] for a in shown]
+    assert cats.count("경제") == 5 and cats.count("정치") == 5 and cats.count("치안") == 10
+    everything, _, cut = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, True)
+    assert len(everything) == 50 and not cut                     # 전체 보기
+
+
+def test_direct_topic_and_selected_articles_are_never_dropped(conn):
+    _many(conn, 30, "Iraq attack")
+    db.upsert_article(conn, make_article("https://example.com/b", "Jordan paper profiles Bismayah housing"))
+    low, _ = db.upsert_article(conn, make_article("https://example.com/low", "Jordan tourism rises"))
+    conn.execute("UPDATE articles SET selected=1 WHERE id=?", (low,))
+    pipeline.recompute(conn)
+    shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    by_title = {a["title"]: a["pick_reason"] for a in shown}
+    assert by_title["Jordan paper profiles Bismayah housing"] == "관심 주제 직접 보도"
+    assert by_title["Jordan tourism rises"] == "선택한 기사" and len(shown) == 21
+
+
+def test_filters_and_small_lists_are_not_trimmed(conn):
+    _many(conn, 30, "Iraq attack")
+    pipeline.recompute(conn)
+    shown, matched, trimmed = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {"category": "치안"}, False)
+    assert len(shown) == matched == 30 and not trimmed
+    conn.execute("DELETE FROM articles WHERE id > 5")
+    shown, matched, trimmed = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert len(shown) == matched == 5 and not trimmed

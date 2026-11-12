@@ -71,10 +71,8 @@ def index(request: Request):
                "topic": q.get("topic", ""), "selected": q.get("selected", ""),
                "undated": (q.getlist("undated") or ["1"])[-1]}
     with db.session() as conn:
-        articles = pipeline.list_articles(
-            conn, d_from, d_to, keyword=filters["q"], category=filters["category"], region=filters["region"],
-            topic=filters["topic"], selected_only=bool(filters["selected"]),
-            include_undated=filters["undated"] == "1", demo=config.demo_mode())
+        show_all = q.get("all") == "1"
+        articles, matched, trimmed = pipeline.dashboard_list(conn, d_from, d_to, filters, show_all, config.demo_mode())
         run = None if config.demo_mode() else pipeline.last_run(conn)
         total = conn.execute("SELECT COUNT(*) c FROM articles WHERE is_demo=?", (int(config.demo_mode()),)).fetchone()["c"]
         selected_count = conn.execute("SELECT COUNT(*) c FROM articles WHERE selected=1 AND is_demo=?",
@@ -82,8 +80,10 @@ def index(request: Request):
     unsummarized = sum(a["summary_status"] != "ok" for a in articles)
     return render(request, "index.html", d_from=d_from, d_to=d_to, f=filters, articles=articles, run=run,
                   total=total, selected_count=selected_count, unsummarized=unsummarized,
-                  msg=q.get("msg", ""), batch=llm.MAX_PER_BATCH,
-                  qs=urlencode({"from": d_from, "to": d_to, **{k: v for k, v in filters.items() if v}}))
+                  msg=q.get("msg", ""), batch=llm.MAX_PER_BATCH, matched=matched, trimmed=trimmed,
+                  show_all=show_all, narrowed=any(filters[k] for k in pipeline.NARROWING),
+                  qs=urlencode({"from": d_from, "to": d_to, **{k: v for k, v in filters.items() if v},
+                                **({"all": "1"} if show_all else {})}))
 
 
 @app.post("/refresh")
@@ -100,14 +100,13 @@ def refresh(d_from: str = Form(...), d_to: str = Form(...), q: str = Form("")):
 @app.post("/summarize")
 async def summarize(request: Request):
     form = await request.form()
-    params = {k: form.get(k, "") for k in ("from", "to", "q", "category", "region", "topic", "selected")}
+    params = {k: form.get(k, "") for k in ("from", "to", "q", "category", "region", "topic", "selected", "all")}
     if not config.llm_configured():
         return back("/", **params, msg="요약 설정 필요: ANTHROPIC_API_KEY 가 없습니다.")
     with db.session() as conn:
-        articles = pipeline.list_articles(
-            conn, params["from"], params["to"], keyword=params["q"], category=params["category"],
-            region=params["region"], topic=params["topic"], selected_only=bool(params["selected"]),
-            demo=config.demo_mode())
+        # 화면에 보이는 목록만 요약한다(추천 보기에서는 추천분만).
+        articles, _, _ = pipeline.dashboard_list(conn, params["from"], params["to"], params,
+                                                 params["all"] == "1", config.demo_mode())
         counts = llm.summarize_batch(conn, articles)
         pipeline.recompute(conn, config.demo_mode())
     msg = f"요약 성공 {counts['ok']}건 · 실패 {counts['failed']}건 · 남은 미요약 {counts['remaining']}건"

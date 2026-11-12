@@ -24,7 +24,7 @@
   </div>
   {% if a.ko_summary %}<p class="summary">{{ a.ko_summary }} <span class="meta">({{ a.summary_basis }})</span></p>
   {% elif a.snippet %}<p class="summary orig" dir="auto">{{ a.snippet }}</p>{% endif %}
-  <div class="why"><b>추천 이유</b> {{ a.reasons|join(' · ') }} <span class="meta">(점수 {{ a.score|int }})</span></div>
+  <div class="why"><b>추천 이유</b> {{ a.reasons|join(' · ') }} <span class="meta">(점수 {{ a.score|int }}{% if a.pick_reason %} · {{ a.pick_reason }}{% endif %})</span></div>
   {% if a.related %}
   <details class="related">
     <summary>같은 사건으로 묶인 기사 {{ a.related|length }}건 — 추가 사실·다른 보도를 확인</summary>
@@ -74,6 +74,7 @@
   </div>
 </section>
 
+{% if trimmed %}<p class="hint">관심 주제를 직접 다룬 기사는 모두 넣고, 나머지는 정치·치안·테러·경제·국제에서 상위 기사를 고르게 골랐습니다. 건수와 분야는 config/topics.yaml 의 recommend 에서 바꿉니다.</p>{% endif %}
 <nav class="tabs" aria-label="관심 주제">
   {% set base_qs = 'from=' ~ d_from ~ '&to=' ~ d_to %}
   <a href="/?{{ base_qs }}" aria-current="{{ 'true' if not f.topic else 'false' }}">전체 추천</a>
@@ -97,11 +98,16 @@
     <button type="submit">필터 적용</button>
   </form>
   <div class="row" style="margin-top:10px;justify-content:space-between">
-    <div>기간 내 {{ articles|length }}개 사건 표시 · 저장된 기사 전체 {{ total }}건 · 선택 <b data-selected-count>{{ selected_count }}</b>건
+    <div>
+      {% if trimmed %}<b>추천 {{ articles|length }}건</b> 표시 · 기간 내 전체 {{ matched }}건 · <a href="/?{{ qs }}&all=1">전체 보기</a>
+      {% elif show_all and not narrowed %}기간 내 전체 {{ matched }}건 표시 · <a href="/?from={{ d_from }}&to={{ d_to }}">추천만 보기</a>
+      {% else %}조건에 맞는 {{ matched }}건 표시{% endif %}
+      · 저장된 기사 {{ total }}건 · 선택 <b data-selected-count>{{ selected_count }}</b>건
       · <a href="/draft?from={{ d_from }}&to={{ d_to }}">선택한 기사로 초안 만들기</a></div>
     <form method="post" action="/summarize" data-busy>
       <input type="hidden" name="from" value="{{ d_from }}"><input type="hidden" name="to" value="{{ d_to }}">
       {% for k in ['q','category','region','topic','selected'] %}<input type="hidden" name="{{ k }}" value="{{ f[k] }}">{% endfor %}
+      <input type="hidden" name="all" value="{{ '1' if show_all else '' }}">
       <button type="submit" {{ 'disabled' if not llm_ready or not unsummarized }}>위에서부터 {{ batch }}건 한국어 요약</button>
       <span class="meta">미요약 {{ unsummarized }}건</span>
       <span class="spinner" role="status">요약 중입니다…</span>

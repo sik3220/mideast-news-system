@@ -151,3 +151,58 @@ def list_articles(conn, d_from: str, d_to: str, *, keyword: str = "", category: 
             shown[key] = a
             result.append(a)
     return result
+
+
+def pick_recommended(events: list[dict], cfg: dict | None = None) -> list[dict]:
+    """점수순 사건 목록에서 첫 화면에 보일 것만 고른다.
+
+    관심 주제를 제목에서 직접 다룬 사건과 사용자가 선택한 사건은 항상 넣고,
+    남는 자리는 분야를 돌아가며 각 분야의 상위 사건으로 채워 한 분야가 목록을 독차지하지 않게 한다.
+    """
+    cfg = cfg or topics_config()
+    rule = cfg.get("recommend") or {}
+    limit = int(rule.get("limit", 20))
+    picked: dict[int, dict] = {}
+
+    def take(a: dict, reason: str) -> None:
+        a["pick_reason"] = reason
+        picked[a["id"]] = a
+
+    for a in events:                                     # events 는 이미 점수순
+        direct = [t for t in rule.get("must_topics", []) if ranking.match_topic(t, a, cfg) == "title"]
+        if direct and len(picked) < limit:
+            take(a, "관심 주제 직접 보도")
+    floor = float(rule.get("min_score", 0))
+    queues = {c: [a for a in events if a["category"] == c and a["id"] not in picked and a["score"] >= floor]
+              for c in rule.get("categories", [])}
+    while len(picked) < limit and any(queues.values()):
+        for cat, queue in queues.items():
+            if queue and len(picked) < limit:
+                take(queue.pop(0), f"{cat} 분야 상위")
+    for a in events:                                     # 그래도 자리가 남으면 나머지에서 점수순
+        if len(picked) >= limit:
+            break
+        if a["id"] not in picked:
+            take(a, "점수 상위")
+    for a in events:                                     # 선택한 기사는 제한과 무관하게 남긴다
+        if a["id"] not in picked and (a["selected"] or any(r["selected"] for r in a["related"])):
+            take(a, "선택한 기사")
+    return sorted(picked.values(), key=ranking.sort_key)
+
+
+NARROWING = ("q", "category", "region", "topic", "selected")
+
+
+def dashboard_list(conn, d_from: str, d_to: str, f: dict, show_all: bool, demo: bool = False) -> tuple[list[dict], int, bool]:
+    """대시보드에 보일 목록. 반환: (보일 사건, 조건에 맞는 전체 사건 수, 추천만 추렸는지).
+
+    사용자가 탭·필터·검색으로 직접 좁힌 경우에는 추리지 않는다(그 조건에서 빠지는 기사가 없어야 한다).
+    """
+    events = list_articles(conn, d_from, d_to, keyword=f.get("q", ""), category=f.get("category", ""),
+                           region=f.get("region", ""), topic=f.get("topic", ""),
+                           selected_only=bool(f.get("selected")), include_undated=f.get("undated", "1") == "1",
+                           demo=demo)
+    if show_all or any(f.get(k) for k in NARROWING):
+        return events, len(events), False
+    shown = pick_recommended(events)
+    return shown, len(events), len(shown) < len(events)

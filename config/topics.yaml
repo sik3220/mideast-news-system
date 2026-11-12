@@ -50,7 +50,7 @@ iraq_context: [이라크, iraq, iraqi, العراق, العراقي, baghdad, �
 categories:
   테러: [테러, 폭탄, 자폭, ied, 급조폭발물, "suicide bomb", bombing, terror, isis, "islamic state", daesh, 암살, assassinat, إرهاب, داعش, انفجار, عبوة, اغتيال]
   치안: [치안, 공격, 드론, 로켓, 무장단체, 민병대, 시위, 총격, 공습, 납치, attack, drone, rocket, militia, protest, clash, airstrike, kidnap, "security forces", هجوم, مسيرة, فصائل, تظاهرات, أمن, قصف]
-  경제: [경제, 예산, 유가, 원유, 석유, 가스, 투자, 계약, 미수금, 지급, 환율, 수출, 건설, budget, oil, crude, gas, investment, contract, payment, economy, dinar, export, opec, اقتصاد, موازنة, نفط, استثمار, عقد]
+  경제: [경제, 신도시, 사업, 수주, 회수, 예산, 유가, 원유, 석유, 가스, 투자, 계약, 미수금, 지급, 환율, 수출, 건설, budget, oil, crude, gas, investment, contract, payment, economy, dinar, export, opec, اقتصاد, موازنة, نفط, استثمار, عقد]
   국제: [미국, 이란, 이스라엘, 사우디, 튀르키예, 시리아, 호르무즈, 제재, 외교, 유엔, "united states", washington, iran, israel, saudi, turkey, syria, hormuz, sanction, diplomat, 美, أمريكا, إيران, إسرائيل]
   정치: [총리, 대통령, 의회, 내각, 정부, 선거, 장관, 법안, 정당, "prime minister", president, parliament, cabinet, government, election, minister, رئيس الوزراء, مجلس الوزراء, مجلس النواب, البرلمان, الحكومة, انتخابات]
 
@@ -70,6 +70,13 @@ official_domains: [pmo.iq, cabinet.iq, gds.gov.iq, investpromo.gov.iq, nic.gov.i
 
 # 통신사. 같은 통신사 기사를 여러 매체가 재전재한 경우 독립 출처로 세지 않기 위한 표시용.
 wire_names: [연합뉴스, 뉴시스, 뉴스1, reuters, afp, "associated press", ap news, ina, "واع"]
+
+# 첫 화면(전체 추천)에 보일 사건을 고르는 규칙. 나머지는 화면의 "전체 보기"에서 볼 수 있다.
+recommend:
+  limit: 20                                   # 첫 화면에 보일 사건 수
+  min_score: 20                               # 분야별 배분에 넣을 최소 점수. 이보다 낮은 기사는 자리가 남을 때만 점수순으로 채운다
+  must_topics: [bismayah, cabinet]            # 제목에서 직접 다룬 기사는 항상 포함
+  categories: [정치, 치안, 테러, 경제, 국제]   # 남는 자리를 번갈아 채울 분야
 
 weights:
   bismayah_title: 50      # 1순위: 비스마야·한화·NIC 가 제목에서 직접 다뤄짐
