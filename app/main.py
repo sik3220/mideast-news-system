@@ -20,6 +20,7 @@ app = FastAPI(title="이라크·중동 업무 뉴스 대시보드", docs_url=Non
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 templates.env.filters["when"] = lambda a: timeutil.display(a["published_at"], a["published_date"], a["time_precision"])
+templates.env.filters["md"] = lambda d: timeutil.md(d) if d else "날짜 미상"
 templates.env.filters["local"] = lambda s: (timeutil.parse_iso(s).astimezone(timeutil.BAGHDAD).strftime("%m.%d %H:%M")
                                             if s else "없음")
 LANG_NAMES = {"ko": "한국어", "en": "영어", "ar": "아랍어"}
@@ -77,8 +78,9 @@ def index(request: Request):
         total = conn.execute("SELECT COUNT(*) c FROM articles WHERE is_demo=?", (int(config.demo_mode()),)).fetchone()["c"]
         selected_count = conn.execute("SELECT COUNT(*) c FROM articles WHERE selected=1 AND is_demo=?",
                                       (int(config.demo_mode()),)).fetchone()["c"]
-    unsummarized = sum(a["summary_status"] != "ok" for a in articles)
+    unsummarized = sum(llm.needs_summary(a) for a in articles)
     return render(request, "index.html", d_from=d_from, d_to=d_to, f=filters, articles=articles, run=run,
+                  sections=pipeline.sections(articles),
                   total=total, selected_count=selected_count, unsummarized=unsummarized,
                   msg=q.get("msg", ""), batch=llm.MAX_PER_BATCH, matched=matched, trimmed=trimmed,
                   show_all=show_all, narrowed=any(filters[k] for k in pipeline.NARROWING),
@@ -191,6 +193,7 @@ def article_edit(article_id: int, ko_title: str = Form(""), ko_summary: str = Fo
             # 사용자가 직접 쓴 한국어 제목은 요약이 있는 것으로 취급한다(재요약으로 덮어쓰지 않게).
             conn.execute("UPDATE articles SET summary_status='ok', summary_basis=COALESCE(summary_basis,'사용자 작성') "
                          "WHERE id=? AND summary_status<>'ok'", (article_id,))
+            conn.execute("UPDATE articles SET summary_ver=999 WHERE id=?", (article_id,))   # 다시 요약해 덮어쓰지 않게
         if category in CATEGORIES:
             conn.execute("UPDATE articles SET category=? WHERE id=? AND summary_status='ok'", (category, article_id))
         pipeline.recompute(conn, config.demo_mode())

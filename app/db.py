@@ -89,6 +89,8 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     columns = {r["name"] for r in conn.execute("PRAGMA table_info(articles)")}
     if "group_note" not in columns:
         conn.execute("ALTER TABLE articles ADD COLUMN group_note TEXT")
+    if "summary_ver" not in columns:
+        conn.execute("ALTER TABLE articles ADD COLUMN summary_ver INTEGER NOT NULL DEFAULT 0")
     return conn
 
 

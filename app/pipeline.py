@@ -236,3 +236,18 @@ def split_article(conn, article_id: int) -> None:
     conn.execute("UPDATE articles SET event_id=?, group_note=NULL WHERE id=?", (article_id, article_id))
     for o in others:
         conn.execute("INSERT OR IGNORE INTO event_splits (a, b) VALUES (?,?)", (min(o, article_id), max(o, article_id)))
+
+
+SECTION_ORDER = [("정치", ("정치",)), ("치안 · 테러", ("치안", "테러")), ("경제", ("경제",)), ("국제", ("국제",)), ("기타", ("기타", ""))]
+
+
+def sections(events: list[dict], cfg: dict | None = None) -> list[tuple[str, list[dict]]]:
+    """보고서처럼 구역별로 나눈다. 관심 주제를 제목에서 직접 다룬 기사는 맨 위 구역에 모은다."""
+    cfg = cfg or topics_config()
+    must = (cfg.get("recommend") or {}).get("must_topics", [])
+    focus = [a for a in events if any(ranking.match_topic(t, a, cfg) == "title" for t in must)]
+    taken = {a["id"] for a in focus}
+    out = [("관심 주제", focus)]
+    for title, cats in SECTION_ORDER:
+        out.append((title, [a for a in events if a["id"] not in taken and (a["category"] or "") in cats]))
+    return [(t, items) for t, items in out if items]

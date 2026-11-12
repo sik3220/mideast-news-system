@@ -1,132 +1,120 @@
 {% extends "base.html" %}
 {% set page = 'index' %}
-{% macro card(a, qs) %}
-<article class="card {{ 'sel' if a.selected }}">
-  <div class="pick">
-    <input type="checkbox" id="pick{{ a.id }}" data-select="{{ a.id }}" {{ 'checked' if a.selected }}>
-    <label for="pick{{ a.id }}" class="sr">보고서에 쓸 기사로 선택: {{ a.ko_title or a.title }}</label>
-  </div>
+{# 보고서 형식의 항목: 제목 줄(날짜, 주체, 조치 (출처, 날짜)) + 그 아래 세부 줄 #}
+{% macro item(a, qs) %}
+<article class="item {{ 'sel' if a.selected }}">
+  <input type="checkbox" id="pick{{ a.id }}" data-select="{{ a.id }}" {{ 'checked' if a.selected }}
+         aria-label="선택: {{ a.ko_title or a.title }}">
   <div class="body">
-  <h2><a href="/article/{{ a.id }}?back={{ qs|urlencode }}">{{ a.ko_title or a.title }}</a></h2>
-  {% if a.ko_title %}<div class="orig" dir="auto" lang="{{ a.lang }}">{{ a.title }}</div>{% endif %}
-  <div class="meta">
-    {{ a.source_name or a.source_domain or '출처 미상' }} · {{ a|when }}
-    {% if a.lang %} · {{ lang_names.get(a.lang, a.lang) }}{% endif %}
-    · <a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문 열기</a>
-  </div>
-  <div class="chips">
-    <span class="chip cat">{{ a.category or '기타' }}</span>
-    <span class="chip">{{ a.region }}</span>
-    {% for t in a.topics %}<span class="chip topic">{{ topics[t] }}</span>{% endfor %}
-    {% for v in a.verification %}<span class="chip {{ 'warn' if '미확인' in v or '미상' in v else '' }}">{{ v }}</span>{% endfor %}
-    {% if a.stage and a.stage != '해당없음' %}<span class="chip">단계: {{ a.stage }}</span>{% endif %}
-    {% if a.summary_status == 'failed' %}<span class="chip bad">요약 실패</span>{% endif %}
-    {% for f in a.summary_flags %}<span class="chip bad">{{ f }}</span>{% endfor %}
-  </div>
-  {% if a.ko_summary %}<p class="summary">{{ a.ko_summary }} <span class="meta">({{ a.summary_basis }})</span></p>
-  {% elif a.snippet %}<p class="summary orig" dir="auto">{{ a.snippet }}</p>{% endif %}
-  <div class="why"><b>추천 이유</b> {{ a.reasons|join(' · ') }} <span class="meta">(점수 {{ a.score|int }}{% if a.pick_reason %} · {{ a.pick_reason }}{% endif %})</span></div>
-  {% if a.related %}
-  <details class="related">
-    <summary>같은 사건으로 묶인 기사 {{ a.related|length }}건 — 추가 사실·다른 보도를 확인</summary>
-    <ul class="plain">
-    {% for r in a.related %}
-      <li><input type="checkbox" data-select="{{ r.id }}" id="pick{{ r.id }}" {{ 'checked' if r.selected }}>
-        <label for="pick{{ r.id }}" class="sr">선택</label>
-        <a href="/article/{{ r.id }}?back={{ qs|urlencode }}" dir="auto">{{ r.ko_title or r.title }}</a>
-        <span class="meta">— {{ r.source_name or r.source_domain }} · {{ r|when }}{% if r.group_note %} · {{ r.group_note }}{% endif %}</span></li>
-    {% endfor %}
-    </ul>
-  </details>
-  {% endif %}
+    <h3><a href="/article/{{ a.id }}?back={{ qs|urlencode }}" dir="auto">{{ a.published_date|md }}, {{ a.ko_title or a.title }}</a>
+      <span class="src">({{ a.source_name or a.source_domain or '출처 미상' }}, {{ a.published_date|md }})</span></h3>
+    {% if a.ko_summary %}<p class="sub">* {{ a.ko_summary }}</p>{% endif %}
+    {% for f in a.summary_flags %}<p class="sub flag">☞ {{ f }}</p>{% endfor %}
+    {% if a.summary_status == 'failed' %}<p class="sub flag">☞ 번역 실패 — 원문 제목 그대로입니다</p>{% endif %}
+    <p class="foot">
+      {% for t in a.topics if t != 'korea_media' %}<span class="tag">{{ topics[t] }}</span>{% endfor %}
+      {% if a.n_sources >= 2 %}<span>매체 {{ a.n_sources }}곳 보도</span>{% endif %}
+      <a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문</a>
+      {% if a.related %}
+      <details>
+        <summary>같은 사건 {{ a.related|length }}건</summary>
+        <ul>
+        {% for r in a.related %}
+          <li><a href="/article/{{ r.id }}?back={{ qs|urlencode }}" dir="auto">{{ r.ko_title or r.title }}</a>
+            <span class="src">({{ r.source_name or r.source_domain }}, {{ r.published_date|md }})</span></li>
+        {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+    </p>
   </div>
 </article>
 {% endmacro %}
 
 {% block body %}
-<section class="panel" aria-label="검색과 갱신">
+<section class="panel" aria-label="수집">
   <form method="post" action="/refresh" class="row" data-busy>
-    <label>시작일 (바그다드)<input type="date" name="d_from" value="{{ d_from }}" required></label>
-    <label>종료일 (바그다드)<input type="date" name="d_to" value="{{ d_to }}" required></label>
-    <label>추가 검색어 (선택)<input type="text" name="q" value="{{ f.q }}" placeholder="예: 비스마야" size="22"></label>
+    <label>시작일<input type="date" name="d_from" value="{{ d_from }}" required></label>
+    <label>종료일<input type="date" name="d_to" value="{{ d_to }}" required></label>
+    <label>추가 검색어<input type="text" name="q" value="{{ f.q }}" size="18"></label>
     <button class="primary" type="submit" {{ 'disabled' if demo }}>새 기사 수집</button>
-    <span class="spinner" role="status">수집 중입니다… 20~40초 걸릴 수 있습니다.</span>
-  </form>
-  <div class="status" style="margin-top:10px">
-    {% if demo %}
-      데모 모드에서는 실제 수집을 하지 않습니다.
-    {% elif not run %}
-      아직 수집한 적이 없습니다. 기간을 정하고 <b>새 기사 수집</b>을 누르세요. (API 키 없이 Google 뉴스 RSS·GDELT 를 검색합니다)
-    {% else %}
-      마지막 수집: <b class="{{ run.status }}">{{ run.status_text }}</b>
-      · {{ run.finished_at|local }} (바그다드) · 대상 {{ run.date_from }} ~ {{ run.date_to }} · 새 기사 {{ run.new_count }}건
-      · 마지막 성공 갱신 {{ run.last_success_at|local }}
+    <span class="spinner" role="status">수집·번역 중입니다… 1분쯤 걸립니다.</span>
+    <span class="status grow">
+      {% if demo %}데모 모드
+      {% elif not run %}기간을 정하고 수집을 누르세요
+      {% else %}
       <details>
-        <summary>출처별 수집 상태 ({{ run.sources|selectattr('status','equalto','failed')|list|length }}건 실패 / {{ run.sources|length }}건)</summary>
+        <summary><b class="{{ run.status }}">{{ run.status_text }}</b> · {{ run.finished_at|local }}</summary>
         <table class="src">
           <tr><th>출처·검색어</th><th>상태</th><th>결과</th><th>새 기사</th><th>오류</th></tr>
           {% for s in run.sources %}
           <tr><td dir="auto">{{ s.label }}</td>
-            <td>{% if s.status == 'ok' %}<span class="chip ok">성공</span>{% elif s.status == 'empty' %}<span class="chip warn">빈 결과</span>{% else %}<span class="chip bad">실패</span>{% endif %}</td>
+            <td>{{ {'ok': '성공', 'empty': '빈 결과'}.get(s.status, '실패') }}</td>
             <td>{{ s.count }}</td><td>{{ s.new_count }}</td><td>{{ s.error or '' }}</td></tr>
           {% endfor %}
         </table>
       </details>
-    {% endif %}
-  </div>
+      {% endif %}
+    </span>
+  </form>
 </section>
 
-{% if trimmed %}<p class="hint">관심 주제를 직접 다룬 기사는 모두 넣고, 나머지는 정치·치안·테러·경제·국제에서 상위 기사를 고르게 골랐습니다. 건수와 분야는 config/topics.yaml 의 recommend 에서 바꿉니다.</p>{% endif %}
-<nav class="tabs" aria-label="관심 주제">
-  {% set base_qs = 'from=' ~ d_from ~ '&to=' ~ d_to %}
-  <a href="/?{{ base_qs }}" aria-current="{{ 'true' if not f.topic else 'false' }}">전체 추천</a>
-  {% for id, label in topics.items() %}
-  <a href="/?{{ base_qs }}&topic={{ id }}" aria-current="{{ 'true' if f.topic == id else 'false' }}">{{ label }}</a>
-  {% endfor %}
-</nav>
-
-<section class="panel" aria-label="필터">
-  <form method="get" action="/" class="row">
+<div class="bar">
+  <nav class="tabs" aria-label="관심 주제">
+    {% set base_qs = 'from=' ~ d_from ~ '&to=' ~ d_to %}
+    <a href="/?{{ base_qs }}" aria-current="{{ 'true' if not f.topic else 'false' }}">추천</a>
+    {% for id, label in topics.items() %}
+    <a href="/?{{ base_qs }}&topic={{ id }}" aria-current="{{ 'true' if f.topic == id else 'false' }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <form method="get" action="/" class="row filters">
     <input type="hidden" name="from" value="{{ d_from }}"><input type="hidden" name="to" value="{{ d_to }}">
     <input type="hidden" name="topic" value="{{ f.topic }}">
-    <label>분류<select name="category"><option value="">전체</option>
-      {% for c in categories %}<option {{ 'selected' if f.category == c }}>{{ c }}</option>{% endfor %}</select></label>
-    <label>국가·지역<select name="region"><option value="">전체</option>
-      {% for r in regions %}<option {{ 'selected' if f.region == r }}>{{ r }}</option>{% endfor %}</select></label>
-    <label>목록 안 찾기<input type="text" name="q" value="{{ f.q }}" size="16"></label>
-    <label class="inline"><input type="checkbox" name="selected" value="1" {{ 'checked' if f.selected }}> 선택한 기사만</label>
-    <input type="hidden" name="undated" value="0">
-    <label class="inline"><input type="checkbox" name="undated" value="1" {{ 'checked' if f.undated == '1' }}> 발표일 미상 포함</label>
-    <button type="submit">필터 적용</button>
+    <select name="category" aria-label="분류" onchange="this.form.submit()"><option value="">분류 전체</option>
+      {% for c in categories %}<option {{ 'selected' if f.category == c }}>{{ c }}</option>{% endfor %}</select>
+    <select name="region" aria-label="국가·지역" onchange="this.form.submit()"><option value="">지역 전체</option>
+      {% for r in regions %}<option {{ 'selected' if f.region == r }}>{{ r }}</option>{% endfor %}</select>
+    <input type="text" name="q" value="{{ f.q }}" size="12" placeholder="찾기" aria-label="목록 안 찾기">
+    <label class="inline"><input type="checkbox" name="selected" value="1" {{ 'checked' if f.selected }} onchange="this.form.submit()"> 선택만</label>
   </form>
-  <div class="row" style="margin-top:10px;justify-content:space-between">
-    <div>
-      {% if trimmed %}<b>추천 {{ articles|length }}건</b> 표시 · 기간 내 전체 {{ matched }}건 · <a href="/?{{ qs }}&all=1">전체 보기</a>
-      {% elif show_all and not narrowed %}기간 내 전체 {{ matched }}건 표시 · <a href="/?from={{ d_from }}&to={{ d_to }}">추천만 보기</a>
-      {% else %}조건에 맞는 {{ matched }}건 표시{% endif %}
-      · 저장된 기사 {{ total }}건 · 선택 <b data-selected-count>{{ selected_count }}</b>건
-      · <a href="/draft?from={{ d_from }}&to={{ d_to }}">선택한 기사로 초안 만들기</a></div>
+</div>
+
+<div class="bar actions">
+  <span>
+    {% if trimmed %}<b>추천 {{ articles|length }}건</b> / 전체 {{ matched }}건 · <a href="/?{{ qs }}&all=1">전체 보기</a>
+    {% elif show_all and not narrowed %}전체 {{ matched }}건 · <a href="/?from={{ d_from }}&to={{ d_to }}">추천만 보기</a>
+    {% else %}{{ matched }}건{% endif %}
+    · 선택 <b data-selected-count>{{ selected_count }}</b>건
+  </span>
+  <span class="row">
     <form method="post" action="/events/merge">
       <input type="hidden" name="d_from" value="{{ d_from }}"><input type="hidden" name="d_to" value="{{ d_to }}">
-      <button type="submit" title="같은 일을 다룬 기사가 따로 나올 때, 그 기사들을 체크하고 누르세요">체크한 기사를 같은 사건으로 묶기</button>
+      <button type="submit" title="같은 일을 다룬 기사가 따로 나오면 체크하고 누르세요">선택 기사 묶기</button>
     </form>
+    {% if unsummarized or not llm_ready %}
     <form method="post" action="/summarize" data-busy>
       <input type="hidden" name="from" value="{{ d_from }}"><input type="hidden" name="to" value="{{ d_to }}">
       {% for k in ['q','category','region','topic','selected'] %}<input type="hidden" name="{{ k }}" value="{{ f[k] }}">{% endfor %}
       <input type="hidden" name="all" value="{{ '1' if show_all else '' }}">
-      <button type="submit" {{ 'disabled' if not llm_ready or not unsummarized }}>보이는 기사 요약·중복 묶기</button>
-      <span class="meta">미요약 {{ unsummarized }}건 · 한 번에 최대 {{ batch }}건</span>
-      <span class="spinner" role="status">요약 중입니다…</span>
+      <button type="submit" {{ 'disabled' if not llm_ready or not unsummarized }}>미번역 {{ unsummarized }}건 번역</button>
+      <span class="spinner" role="status">번역 중…</span>
     </form>
-  </div>
-</section>
+    {% endif %}
+    <a class="btn primary" href="/draft?from={{ d_from }}&to={{ d_to }}">선택 기사로 초안</a>
+  </span>
+</div>
 
-{% if articles %}
-  {% for a in articles %}{{ card(a, qs) }}{% endfor %}
+{% if sections %}
+  {% for title, items in sections %}
+  <section class="group">
+    <h2>{{ title }}</h2>
+    {% for a in items %}{{ item(a, qs) }}{% endfor %}
+  </section>
+  {% endfor %}
 {% else %}
   <div class="empty">
     {% if not run and not demo %}수집한 자료가 없습니다. 위에서 <b>새 기사 수집</b>을 누르세요.
-    {% elif run and run.status == 'failed' %}수집에 실패해 표시할 자료가 없습니다. 출처별 상태에서 오류를 확인하세요. (자료가 없다는 뜻이 아닙니다)
+    {% elif run and run.status == 'failed' %}수집에 실패해 표시할 자료가 없습니다. 수집 상태를 눌러 오류를 확인하세요. (자료가 없다는 뜻이 아닙니다)
     {% else %}선택 기간·성공적으로 검색한 출처에서 조건에 맞는 자료를 찾지 못했습니다.
       {% if run and run.status == 'partial' %}일부 출처는 검색에 실패해 범위에서 빠져 있습니다.{% endif %}
     {% endif %}

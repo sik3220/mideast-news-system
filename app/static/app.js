@@ -6,7 +6,7 @@ document.addEventListener('change', async (e) => {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({selected: box.checked})});
   if (!res.ok) { box.checked = !box.checked; alert('선택을 저장하지 못했습니다.'); return; }
   const data = await res.json();
-  box.closest('.card')?.classList.toggle('sel', box.checked);
+  box.closest('.card, .item')?.classList.toggle('sel', box.checked);
   document.querySelectorAll('[data-selected-count]').forEach(el => el.textContent = data.selected_count);
 });
 document.addEventListener('submit', (e) => {

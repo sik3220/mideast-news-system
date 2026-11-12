@@ -350,7 +350,7 @@ def test_view_is_summarized_once_and_failures_are_reported(conn):
     calls = fake.summary_calls
     again = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=FakeLLM())
     assert again["ok"] == 1 and calls == 7                # 이미 요약한 6건은 다시 호출하지 않는다
-    assert "한국어 요약 6건" in enrich.message(total) and "실패 1건" in enrich.message(total)
+    assert "번역 6건" in enrich.message(total) and "실패 1건" in enrich.message(total)
 
 
 def test_same_event_articles_are_merged_and_slot_is_refilled(conn):
@@ -420,3 +420,35 @@ def test_manual_merge_and_split_are_respected_by_auto_grouping(conn):
     former = [i for i in ids[:3] if i != rep["id"]]
     assert events[former[0]] == events[former[1]]          # 직접 묶은 나머지 둘은 그대로 한 사건
     assert events[rep["id"]] != events[former[0]]          # 떼어 놓은 기사는 예전 묶음으로 돌아가지 않는다
+
+
+def test_negated_or_tentative_wording_is_not_flagged():
+    s = llm.Summary(ko_title="Masgarian 사령관, 차기 주이라크 이란 대사 거론", ko_summary="임명 여부는 확정되지 않음",
+                    category="국제", stage="해당없음", claim_type="언론 보도", followups=[])
+    assert llm.guard("Inside story: Iran's next envoy to Iraq? Meet Commander Masgarian", s)[1] == []
+    s2 = s.model_copy(update={"ko_summary": "대사 임명 확정"})
+    assert any("확정" in f for f in llm.guard("Iran's next envoy to Iraq?", s2)[1])
+
+
+def test_summaries_from_an_older_instruction_are_redone_once_but_user_text_is_kept(conn):
+    from app import enrich
+    _many(conn, 2, "Iraq attack")
+    pipeline.recompute(conn)
+    a, b = [r["id"] for r in conn.execute("SELECT id FROM articles ORDER BY id")]
+    conn.execute("UPDATE articles SET ko_title='예전 문체', summary_status='ok', summary_ver=1 WHERE id=?", (a,))
+    conn.execute("UPDATE articles SET ko_title='내가 쓴 제목', summary_status='ok', summary_ver=999 WHERE id=?", (b,))
+    fake = FakeLLM()
+    enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
+    assert db.get_article(conn, a)["ko_title"].startswith("요약: ") and db.get_article(conn, b)["ko_title"] == "내가 쓴 제목"
+    enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
+    assert fake.summary_calls == 1
+
+
+def test_everything_shown_is_translated_in_one_run_even_beyond_one_batch(conn, monkeypatch):
+    from app import enrich
+    monkeypatch.setattr(llm, "MAX_PER_BATCH", 6)          # 한 번에 보내는 건수보다 보이는 기사가 많은 상황
+    _many(conn, 30, "Iraq attack")
+    pipeline.recompute(conn)
+    total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=FakeLLM())
+    shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert total["remaining"] == 0 and len(shown) == 20 and all(a["ko_title"] for a in shown)
