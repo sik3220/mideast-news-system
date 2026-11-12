@@ -60,6 +60,7 @@ def startup() -> None:
             demo.seed(conn)
         # 추천 규칙(config/topics.yaml)을 고친 뒤 다시 켜면 저장된 기사에도 바로 반영되게 한다.
         pipeline.recompute(conn, config.demo_mode())
+        llm.recheck_flags(conn)
 
 
 # ───────────────────────── 대시보드 ─────────────────────────
@@ -79,8 +80,9 @@ def index(request: Request):
         selected_count = conn.execute("SELECT COUNT(*) c FROM articles WHERE selected=1 AND is_demo=?",
                                       (int(config.demo_mode()),)).fetchone()["c"]
     unsummarized = sum(llm.needs_summary(a) for a in articles)
+    stale = sum(a["summary_status"] == "ok" and llm.needs_summary(a) for a in articles)
     return render(request, "index.html", d_from=d_from, d_to=d_to, f=filters, articles=articles, run=run,
-                  sections=pipeline.sections(articles),
+                  sections=pipeline.sections(articles), stale=stale,
                   total=total, selected_count=selected_count, unsummarized=unsummarized,
                   msg=q.get("msg", ""), batch=llm.MAX_PER_BATCH, matched=matched, trimmed=trimmed,
                   show_all=show_all, narrowed=any(filters[k] for k in pipeline.NARROWING),

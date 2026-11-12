@@ -193,7 +193,7 @@ def test_numbers_missing_from_source_are_flagged():
     s = llm.Summary(ko_title="NIC, 1.1억 달러 지급 절차 완료 발표", ko_summary="미수금 111 가운데 일부다.",
                     category="경제", stage="완료", claim_type="공식 발표", followups=[])
     _, flags = llm.guard("Iraq finalizes $111M Bismayah payment paperwork", s)
-    assert [f for f in flags if "숫자" in f] == ["숫자 확인 필요: ‘1.1’ 가 원문에 그대로 나오지 않음"]
+    assert [f for f in flags if "숫자" in f] == ["요약의 숫자 ‘1.1’ 이 원문 제목에 없음 — 원문에서 확인"]
 
 
 def test_summary_is_labelled_as_title_based_and_failure_keeps_original(conn):
@@ -394,7 +394,7 @@ def test_small_spelled_out_numbers_are_not_flagged_and_flags_are_unique():
     s = llm.Summary(ko_title="이라크 총리실, 제27차 정례 각료회의 결정사항 공개", ko_summary="제27차 회의 결정사항을 게시했다. 규모는 350억이다.",
                     category="정치", stage="해당없음", claim_type="공식 발표", followups=[])
     _, flags = llm.guard("مقررات جلسة مجلس الوزراء الاعتيادية السابعة والعشرين 2026", s)
-    assert flags == ["숫자 확인 필요: ‘350’ 가 원문에 그대로 나오지 않음"]
+    assert flags == ["요약의 숫자 ‘350’ 이 원문 제목에 없음 — 원문에서 확인"]
 
 
 def test_manual_merge_and_split_are_respected_by_auto_grouping(conn):
@@ -452,3 +452,13 @@ def test_everything_shown_is_translated_in_one_run_even_beyond_one_batch(conn, m
     total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=FakeLLM())
     shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
     assert total["remaining"] == 0 and len(shown) == 20 and all(a["ko_title"] for a in shown)
+
+
+def test_stored_flags_are_rechecked_with_current_rules(conn):
+    aid, _ = db.upsert_article(conn, make_article(title="مقررات جلسة مجلس الوزراء الاعتيادية السابعة والعشرين"))
+    conn.execute("""UPDATE articles SET ko_title='이라크 총리 언론실, 제27차 정례 각료회의 결정사항 공개', ko_summary='',
+                    category='정치', stage='해당없음', claim_type='공식 발표', summary_status='ok',
+                    summary_flags='["숫자 확인 필요: ‘27’ 가 원문에 그대로 나오지 않음", "숫자 확인 필요: ‘27’ 가 원문에 그대로 나오지 않음"]'
+                    WHERE id=?""", (aid,))
+    llm.recheck_flags(conn)
+    assert db.get_article(conn, aid)["summary_flags"] == []

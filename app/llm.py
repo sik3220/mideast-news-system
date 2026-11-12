@@ -40,7 +40,7 @@ SYSTEM = """이라크·중동 동향 보고서를 쓰는 담당자를 위해 기
 
 ko_title (제목 줄): "주체, 핵심 조치 또는 발표" 형태의 명사형 한 줄. 예: "재무부 장관, 천궁-II 도입 계약 관련 자금 집행 지시", "Al-Zaidi 총리, 이란 비공개 방문 및 美-이란 중재 시도". 주체는 기사 속에서 행동하거나 발언한 쪽이다. 매체 이름을 주체로 쓰지 않는다. 다만 매체의 단독 보도·주장 자체가 내용이면 "이라크 언론, … 보도"처럼 쓴다. 날짜와 매체명은 붙이지 않는다(화면이 따로 붙인다).
 
-ko_summary (세부 줄): 제목 줄에 담지 못한 구체 내용을 개조식 한 줄로 쓴다. "~ 지시", "~ 예정", "~ 강조"처럼 명사형으로 끝낸다. 예: "국방장관과 회담에서 방산 계약 이행을 위한 재정 지원 방안 협의". "…라고 보도했다", "○○는 전했다" 같은 전달 표현과 매체명을 쓰지 않는다. 제목의 형식이나 불확실성에 대한 해설("제목은 의문형이다", "확정되지 않았다")을 덧붙이지 않는다. 입력에 제목 줄 이상의 내용이 없으면 빈 문자열로 둔다. 제목 줄을 되풀이하지 않는다.
+ko_summary (세부 줄): 제목 줄에 담지 못한 구체 내용을 개조식 한 줄로 쓴다. "~ 지시", "~ 예정", "~ 강조"처럼 명사형으로 끝낸다. 예: "국방장관과 회담에서 방산 계약 이행을 위한 재정 지원 방안 협의", "관련 문서 3건 확인 후 해당 계약 취소 지시", "수차례 항의에도 공격 중단을 위한 실효적 조치가 없다고 강조". "…라고 보도했다", "○○는 전했다" 같은 전달 표현과 매체명을 쓰지 않는다. 제목의 형식이나 불확실성에 대한 해설("제목은 의문형이다", "확정되지 않았다")을 덧붙이지 않는다. 입력에 제목 줄 이상의 내용이 없으면 빈 문자열로 둔다. 제목 줄을 되풀이하지 않는다.
 
 주어진 입력에 있는 내용만 쓴다. 입력은 대개 제목 한 줄이거나 제목과 짧은 검색 요약이다. 입력에 없는 배경, 인과관계, 전망, 숫자를 보태지 않는다.
 
@@ -73,14 +73,14 @@ def guard(source_text: str, s: Summary) -> tuple[Summary, list[str]]:
         return any(w in src for w in FIRM_WORDS[stage])
 
     if s.stage in FIRM_WORDS and not supported(s.stage):
-        flags.append(f"단계 확인 필요: 원문에서 ‘{s.stage}’ 근거 표현을 찾지 못함")
+        flags.append(f"요약은 ‘{s.stage}’ 단계로 썼는데 원문 제목에 그 표현이 없음 — 원문에서 확인")
         tentative = any(w in src for w in TENTATIVE_WORDS)
         s = s.model_copy(update={"stage": "협의" if tentative else "해당없음"})
     for word, stage in STRONG_KO.items():
         text = s.ko_title + " " + s.ko_summary
         affirmed = re.search(re.escape(word) + r"(?![^.,·]{0,12}(않|아니|없|미정|여부|가능성))", text)   # 부정·미정 문맥은 제외
         if affirmed and word not in src and not supported(stage):
-            flag = f"표현 확인 필요: 요약의 ‘{word}’ 가 원문에서 확인되지 않음"
+            flag = f"요약의 ‘{word}’ 표현이 원문 제목에 없음 — 원문에서 확인"
             if flag not in flags:
                 flags.append(flag)
     # 숫자 대조는 금액·규모처럼 틀리면 곤란한 숫자(3자리 이상이거나 소수)에만 한다.
@@ -91,7 +91,7 @@ def guard(source_text: str, s: Summary) -> tuple[Summary, list[str]]:
     for num in number.findall(s.ko_title + " " + s.ko_summary):
         digits = re.sub(r"\D", "", num)
         if (len(digits) >= 3 or "." in num) and digits not in src_numbers:
-            flags.append(f"숫자 확인 필요: ‘{num}’ 가 원문에 그대로 나오지 않음")
+            flags.append(f"요약의 숫자 ‘{num}’ 이 원문 제목에 없음 — 원문에서 확인")
     flags = list(dict.fromkeys(flags))
     return s, flags
 
@@ -99,6 +99,21 @@ def guard(source_text: str, s: Summary) -> tuple[Summary, list[str]]:
 def needs_summary(a: dict) -> bool:
     """요약이 없거나, 예전 지시문으로 만든 요약이면 True. 사용자가 직접 쓴 것은 건드리지 않는다."""
     return a["summary_status"] != "ok" or (a.get("summary_ver") or 0) < SUMMARY_VERSION
+
+
+def recheck_flags(conn) -> None:
+    """저장된 요약의 점검 표시를 현재 규칙으로 다시 매긴다. API 를 부르지 않는다."""
+    rows = conn.execute("SELECT id, title, snippet, ko_title, ko_summary, category, stage, claim_type, summary_flags "
+                        "FROM articles WHERE summary_status='ok' AND ko_title IS NOT NULL").fetchall()
+    for r in rows:
+        try:
+            s = Summary(ko_title=r["ko_title"], ko_summary=r["ko_summary"] or "", category=r["category"] or "기타",
+                        stage=r["stage"] or "해당없음", claim_type=r["claim_type"] or "기타", followups=[])
+        except ValueError:
+            continue                      # 사용자가 고친 값 등 형식이 다른 것은 그대로 둔다
+        flags = json.dumps(guard("\n".join(filter(None, [r["title"], r["snippet"]])), s)[1], ensure_ascii=False)
+        if flags != r["summary_flags"]:
+            conn.execute("UPDATE articles SET summary_flags=? WHERE id=?", (flags, r["id"]))
 
 
 def source_text(article: dict) -> str:

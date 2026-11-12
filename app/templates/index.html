@@ -96,7 +96,10 @@
       <input type="hidden" name="from" value="{{ d_from }}"><input type="hidden" name="to" value="{{ d_to }}">
       {% for k in ['q','category','region','topic','selected'] %}<input type="hidden" name="{{ k }}" value="{{ f[k] }}">{% endfor %}
       <input type="hidden" name="all" value="{{ '1' if show_all else '' }}">
-      <button type="submit" {{ 'disabled' if not llm_ready or not unsummarized }}>미번역 {{ unsummarized }}건 번역</button>
+      <button type="submit" class="{{ 'primary' if stale }}" {{ 'disabled' if not llm_ready or not unsummarized }}>
+        {%- if stale and stale == unsummarized %}새 문체로 다시 요약 {{ stale }}건
+        {%- elif stale %}번역·다시 요약 {{ unsummarized }}건
+        {%- else %}미번역 {{ unsummarized }}건 번역{% endif %}</button>
       <span class="spinner" role="status">번역 중…</span>
     </form>
     {% endif %}
@@ -104,6 +107,7 @@
   </span>
 </div>
 
+{% if stale and llm_ready %}<div class="warnbox">요약 문체가 보고서 형식으로 바뀌었습니다. 예전 문체로 남은 {{ stale }}건은 위의 <b>다시 요약</b> 버튼을 눌러야 새 문체로 바뀝니다.</div>{% endif %}
 {% if sections %}
   <nav class="secnav" id="secnav" aria-label="구역 선택">
     <button type="button" data-sec="" aria-pressed="true">전체 <span>{{ articles|length }}</span></button>
