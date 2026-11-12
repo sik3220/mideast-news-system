@@ -28,9 +28,11 @@ table.src th,table.src td{border-top:1px solid var(--line);padding:4px 8px;text-
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px}
 .tabs a{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;text-decoration:none;color:var(--ink)}
 .tabs a[aria-current=true]{background:#22201c;color:#fff;border-color:#22201c}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin-bottom:10px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px 16px;margin-bottom:10px;display:flex;gap:14px;align-items:flex-start}
+.card .body{flex:1;min-width:0;display:grid;gap:4px}
+.card .orig{overflow-wrap:anywhere}
 .card.sel{border-color:var(--accent);box-shadow:inset 4px 0 0 var(--accent)}
-.card .pick{grid-row:1/span 6;padding-top:3px}.card .pick input{width:20px;height:20px}
+.card .pick{flex:none;padding-top:3px}.card .pick input{width:20px;height:20px}
 .card h2{font-size:16.5px;margin:0;line-height:1.45}.card h2 a{color:var(--ink);text-decoration:none}.card h2 a:hover{text-decoration:underline}
 .orig{color:var(--muted);font-size:13.5px;unicode-bidi:plaintext}
 .meta{font-size:13px;color:var(--muted)}

@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import config, db, demo, draft, llm, pipeline, timeutil
+from . import config, db, demo, draft, enrich, llm, pipeline, timeutil
 from .docs import daily_ppt, preview, weekly_word
 from .docs.items import items_to_text
 
@@ -93,7 +93,10 @@ def refresh(d_from: str = Form(...), d_to: str = Form(...), q: str = Form("")):
     with db.session() as conn:
         run_id = pipeline.run_collection(conn, d_from, d_to, q)
         run = conn.execute("SELECT status, new_count FROM runs WHERE id=?", (run_id,)).fetchone()
-    msg = f"{pipeline.STATUS_TEXT[run['status']]} · 새 기사 {run['new_count']}건"
+        msg = f"{pipeline.STATUS_TEXT[run['status']]} · 새 기사 {run['new_count']}건"
+        if config.llm_configured() and config.auto_summarize() and run["status"] in ("ok", "partial"):
+            # 첫 화면에 나올 추천분만 바로 한국어로 만들고 같은 사건을 묶는다.
+            msg += " · " + enrich.message(enrich.enrich_view(conn, d_from, d_to, {}, False))
     return back("/", **{"from": d_from, "to": d_to, "q": q, "msg": msg})
 
 
@@ -104,13 +107,10 @@ async def summarize(request: Request):
     if not config.llm_configured():
         return back("/", **params, msg="요약 설정 필요: ANTHROPIC_API_KEY 가 없습니다.")
     with db.session() as conn:
-        # 화면에 보이는 목록만 요약한다(추천 보기에서는 추천분만).
-        articles, _, _ = pipeline.dashboard_list(conn, params["from"], params["to"], params,
-                                                 params["all"] == "1", config.demo_mode())
-        counts = llm.summarize_batch(conn, articles)
-        pipeline.recompute(conn, config.demo_mode())
-    msg = f"요약 성공 {counts['ok']}건 · 실패 {counts['failed']}건 · 남은 미요약 {counts['remaining']}건"
-    return back("/", **params, msg=msg)
+        # 화면에 보이는 목록만 처리한다(추천 보기에서는 추천분만).
+        total = enrich.enrich_view(conn, params["from"], params["to"], params, params["all"] == "1",
+                                   config.demo_mode())
+    return back("/", **params, msg=enrich.message(total))
 
 
 @app.post("/api/article/{article_id}/select")

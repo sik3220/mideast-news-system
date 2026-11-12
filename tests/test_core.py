@@ -309,3 +309,86 @@ def test_filters_and_small_lists_are_not_trimmed(conn):
     conn.execute("DELETE FROM articles WHERE id > 5")
     shown, matched, trimmed = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
     assert len(shown) == matched == 5 and not trimmed
+
+
+# ───────── 추천분 자동 요약과 같은 사건 묶기 ─────────
+
+class FakeLLM:
+    """요약은 '요약: 원제목', 묶기는 미리 정한 답을 돌려주는 가짜 클라이언트. 호출 횟수를 센다."""
+
+    def __init__(self, groups=None, fail_titles=()):
+        self.groups, self.fail_titles = groups or (lambda articles_text: []), fail_titles
+        self.summary_calls, self.group_calls = 0, 0
+        self.beta = SimpleNamespace(messages=SimpleNamespace(parse=self.parse))
+
+    def parse(self, **kw):
+        text = kw["messages"][0]["content"]
+        if kw["output_format"] is llm.EventGroups:
+            self.group_calls += 1
+            return SimpleNamespace(stop_reason="end_turn", parsed_output=llm.EventGroups(groups=self.groups(text)))
+        self.summary_calls += 1
+        title = next(ln for ln in text.splitlines() if ln.startswith("제목: "))[4:]
+        if any(f in title for f in self.fail_titles):
+            raise TimeoutError("timed out")
+        out = llm.Summary(ko_title="요약: " + title[:30], ko_summary="한 문장.", category="기타", stage="해당없음",
+                          claim_type="언론 보도", followups=[])
+        return SimpleNamespace(stop_reason="end_turn", parsed_output=out)
+
+
+def test_view_is_summarized_once_and_failures_are_reported(conn):
+    from app import enrich
+    _many(conn, 6, "Iraq attack")
+    db.upsert_article(conn, make_article("https://example.com/bad", "Iraq oil BROKEN item"))
+    pipeline.recompute(conn)
+    fake = FakeLLM(fail_titles=("BROKEN",))
+    total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
+    assert (total["ok"], total["failed"]) == (6, 1) and "TimeoutError" in total["first_error"]
+    shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert sum(a["ko_title"] is not None and a["ko_title"].startswith("요약: ") for a in shown) == 6
+    assert next(a for a in shown if "BROKEN" in a["title"])["summary_status"] == "failed"
+    calls = fake.summary_calls
+    again = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=FakeLLM())
+    assert again["ok"] == 1 and calls == 7                # 이미 요약한 6건은 다시 호출하지 않는다
+    assert "한국어 요약 6건" in enrich.message(total) and "실패 1건" in enrich.message(total)
+
+
+def test_same_event_articles_are_merged_and_slot_is_refilled(conn):
+    from app import enrich
+    _many(conn, 25, "Iraq attack")
+    pipeline.recompute(conn)
+    first, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    dup = [a["id"] for a in first[:3]]
+    fake = FakeLLM(groups=lambda text: [dup] if all(f"[{i}]" in text for i in dup) else [])
+    total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
+    assert total["merged"] == 2
+    shown, matched, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert matched == 23 and len(shown) == 20             # 빈 자리는 다음 기사로 채워진다
+    rep = next(a for a in shown if a["id"] in dup)
+    assert {rep["id"], *[r["id"] for r in rep["related"]]} == set(dup)   # 원본은 묶음 아래에 그대로 남는다
+    assert conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0] == 25
+    assert all(a["ko_title"] for a in shown)              # 새로 올라온 기사도 한국어로 처리됨
+    pipeline.recompute(conn)                              # 다음 수집 때도 묶음이 유지된다
+    assert pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)[1] == 23
+
+
+def test_grouping_answer_is_validated():
+    arts = [dict(make_article(), id=1, published_date="2026-11-10"), dict(make_article(), id=2, published_date="2026-11-11"),
+            dict(make_article(), id=3, published_date="2026-11-20"), dict(make_article(), id=4, published_date="2026-11-10")]
+    assert llm.valid_groups([[1, 2, 3, 99], [2, 4], [4]], arts) == [[1, 2]]   # 모르는 번호·먼 날짜·중복 사용·1건 묶음 제외
+
+
+def test_without_key_view_is_left_untouched(conn, monkeypatch):
+    from app import enrich
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    _many(conn, 3, "Iraq attack")
+    pipeline.recompute(conn)
+    total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert total["ok"] == 0 and total["unconfigured"] == 3 and "설정 필요" in enrich.message(total)
+
+
+def test_small_spelled_out_numbers_are_not_flagged_and_flags_are_unique():
+    s = llm.Summary(ko_title="이라크 총리실, 제27차 정례 각료회의 결정사항 공개", ko_summary="제27차 회의 결정사항을 게시했다. 규모는 350억이다.",
+                    category="정치", stage="해당없음", claim_type="공식 발표", followups=[])
+    _, flags = llm.guard("مقررات جلسة مجلس الوزراء الاعتيادية السابعة والعشرين 2026", s)
+    assert flags == ["숫자 확인 필요: ‘350’ 가 원문에 그대로 나오지 않음"]

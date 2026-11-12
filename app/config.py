@@ -46,6 +46,11 @@ def llm_configured() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
 
 
+def auto_summarize() -> bool:
+    """수집 직후 추천분을 자동으로 요약·묶기 할지. .env 에 AUTO_SUMMARIZE=0 이면 끈다."""
+    return os.environ.get("AUTO_SUMMARIZE", "1").strip().lower() not in ("0", "false", "no")
+
+
 def llm_model() -> str:
     return os.environ.get("LLM_MODEL") or "claude-opus-5-5"
 

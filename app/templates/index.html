@@ -6,6 +6,7 @@
     <input type="checkbox" id="pick{{ a.id }}" data-select="{{ a.id }}" {{ 'checked' if a.selected }}>
     <label for="pick{{ a.id }}" class="sr">보고서에 쓸 기사로 선택: {{ a.ko_title or a.title }}</label>
   </div>
+  <div class="body">
   <h2><a href="/article/{{ a.id }}?back={{ qs|urlencode }}">{{ a.ko_title or a.title }}</a></h2>
   {% if a.ko_title %}<div class="orig" dir="auto" lang="{{ a.lang }}">{{ a.title }}</div>{% endif %}
   <div class="meta">
@@ -38,6 +39,7 @@
     </ul>
   </details>
   {% endif %}
+  </div>
 </article>
 {% endmacro %}
 
@@ -108,8 +110,8 @@
       <input type="hidden" name="from" value="{{ d_from }}"><input type="hidden" name="to" value="{{ d_to }}">
       {% for k in ['q','category','region','topic','selected'] %}<input type="hidden" name="{{ k }}" value="{{ f[k] }}">{% endfor %}
       <input type="hidden" name="all" value="{{ '1' if show_all else '' }}">
-      <button type="submit" {{ 'disabled' if not llm_ready or not unsummarized }}>위에서부터 {{ batch }}건 한국어 요약</button>
-      <span class="meta">미요약 {{ unsummarized }}건</span>
+      <button type="submit" {{ 'disabled' if not llm_ready or not unsummarized }}>보이는 기사 한국어 요약</button>
+      <span class="meta">미요약 {{ unsummarized }}건 · 한 번에 최대 {{ batch }}건</span>
       <span class="spinner" role="status">요약 중입니다…</span>
     </form>
   </div>
