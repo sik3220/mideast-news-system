@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -10,6 +11,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 from . import config, db, demo, draft, enrich, llm, pipeline, timeutil
 from .docs import daily_ppt, preview, weekly_word
@@ -83,6 +85,8 @@ def index(request: Request):
     stale = sum(a["summary_status"] == "ok" and llm.needs_summary(a) for a in articles)
     return render(request, "index.html", d_from=d_from, d_to=d_to, f=filters, articles=articles, run=run,
                   sections=pipeline.sections(articles), stale=stale,
+                  auto=bool(unsummarized) and config.llm_configured() and config.auto_summarize()
+                  and q.get("noauto") != "1" and not show_all,   # 전체 보기는 수백 건이라 자동으로 돌리지 않는다
                   total=total, selected_count=selected_count, unsummarized=unsummarized,
                   msg=q.get("msg", ""), batch=llm.MAX_PER_BATCH, matched=matched, trimmed=trimmed,
                   show_all=show_all, narrowed=any(filters[k] for k in pipeline.NARROWING),
@@ -115,6 +119,31 @@ async def summarize(request: Request):
         total = enrich.enrich_view(conn, params["from"], params["to"], params, params["all"] == "1",
                                    config.demo_mode())
     return back("/", **params, msg=enrich.message(total))
+
+
+_enrich_lock = threading.Lock()
+
+
+@app.post("/api/enrich")
+async def api_enrich(request: Request):
+    """화면이 열릴 때 스스로 부른다: 보이는 기사 중 미번역·예전 문체를 번역하고 중복을 묶는다."""
+    body = await request.json()
+    filters = {k: str(body.get(k) or "") for k in ("q", "category", "region", "topic", "selected")}
+    d_from, d_to = str(body.get("from")), str(body.get("to"))
+    date.fromisoformat(d_from), date.fromisoformat(d_to)
+    if not config.llm_configured():
+        return JSONResponse({"status": "unconfigured"})
+    if not _enrich_lock.acquire(blocking=False):
+        return JSONResponse({"status": "busy"})          # 다른 창에서 이미 처리 중
+    try:
+        def work():
+            with db.session() as conn:
+                return enrich.enrich_view(conn, d_from, d_to, filters, bool(body.get("all")), config.demo_mode())
+        total = await run_in_threadpool(work)
+    finally:
+        _enrich_lock.release()
+    return JSONResponse({"status": "done", "changed": total["ok"] + total["merged"], "remaining": total["remaining"],
+                         "message": enrich.message(total)})
 
 
 @app.post("/api/article/{article_id}/select")

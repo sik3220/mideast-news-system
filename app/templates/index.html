@@ -91,15 +91,12 @@
       <input type="hidden" name="d_from" value="{{ d_from }}"><input type="hidden" name="d_to" value="{{ d_to }}">
       <button type="submit" title="같은 일을 다룬 기사가 따로 나오면 체크하고 누르세요">선택 기사 묶기</button>
     </form>
-    {% if unsummarized or not llm_ready %}
+    {% if unsummarized and not auto %}
     <form method="post" action="/summarize" data-busy>
       <input type="hidden" name="from" value="{{ d_from }}"><input type="hidden" name="to" value="{{ d_to }}">
       {% for k in ['q','category','region','topic','selected'] %}<input type="hidden" name="{{ k }}" value="{{ f[k] }}">{% endfor %}
       <input type="hidden" name="all" value="{{ '1' if show_all else '' }}">
-      <button type="submit" class="{{ 'primary' if stale }}" {{ 'disabled' if not llm_ready or not unsummarized }}>
-        {%- if stale and stale == unsummarized %}새 문체로 다시 요약 {{ stale }}건
-        {%- elif stale %}번역·다시 요약 {{ unsummarized }}건
-        {%- else %}미번역 {{ unsummarized }}건 번역{% endif %}</button>
+      <button type="submit" {{ 'disabled' if not llm_ready }}>{{ '보이는 기사 번역' if show_all else '번역 다시 시도' }} {{ unsummarized }}건</button>
       <span class="spinner" role="status">번역 중…</span>
     </form>
     {% endif %}
@@ -107,7 +104,8 @@
   </span>
 </div>
 
-{% if stale and llm_ready %}<div class="warnbox">요약 문체가 보고서 형식으로 바뀌었습니다. 예전 문체로 남은 {{ stale }}건은 위의 <b>다시 요약</b> 버튼을 눌러야 새 문체로 바뀝니다.</div>{% endif %}
+{% if auto %}<div class="working" id="auto" role="status" data-payload='{{ {"from": d_from, "to": d_to, "all": show_all, "q": f.q, "category": f.category, "region": f.region, "topic": f.topic, "selected": f.selected}|tojson }}'>
+  <span class="dot"></span> 기사 {{ unsummarized }}건을 한국어 보고서 문체로 정리하고 있습니다. 끝나면 화면이 자동으로 바뀝니다.</div>{% endif %}
 {% if sections %}
   <nav class="secnav" id="secnav" aria-label="구역 선택">
     <button type="button" data-sec="" aria-pressed="true">전체 <span>{{ articles|length }}</span></button>
@@ -134,6 +132,21 @@
 
 {% block script %}
 <script>
+// 미번역·예전 문체 기사가 보이면 버튼 없이 스스로 처리하고, 끝나면 화면을 새로 그린다.
+(() => {
+  const box = document.getElementById('auto'); if (!box) return;
+  const url = new URL(location.href); url.searchParams.delete('msg');
+  fetch('/api/enrich', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: box.dataset.payload})
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => {
+      if (d.status === 'busy') { box.lastChild.textContent = ' 다른 창에서 정리 중입니다. 잠시 뒤 새로고침하세요.'; return; }
+      if (d.message) url.searchParams.set('msg', d.message);
+      if (d.status !== 'done' || d.remaining) url.searchParams.set('noauto', '1');   // 실패가 남으면 되풀이하지 않는다
+      location.replace(url);
+    })
+    .catch(() => { box.classList.add('failed'); box.lastChild.textContent = ' 자동 정리에 실패했습니다. 새로고침하면 다시 시도합니다.'; });
+})();
+
 // 구역 선택: 상단에 고정된 버튼으로 한 구역만 골라 본다. 고른 구역은 이 창에서 기억한다.
 (() => {
   const nav = document.getElementById('secnav'); if (!nav) return;
