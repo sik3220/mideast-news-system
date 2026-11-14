@@ -314,3 +314,28 @@ def test_daily_import_puts_terror_on_slide1_and_non_iraq_items_in_the_internatio
     again = main._apply_daily_import(conn, data, "2026-11-14")                         # 두 번 가져와도 그대로
     assert len(data["events"]) == 1 and data["politics"].count("제4순환도로") == 1 and data["economy"].count("Trump") == 1
     assert "새로 넣은 항목이 없습니다" in again and "이미 있는 항목 3건" in again
+
+
+@needs_ppt
+def test_slide2_preview_base_and_layout_follow_the_template(tmp_path):
+    """2장 미리보기: 바탕에는 구역 표지(주황)가 그려지고 본문 상자 자리는 비어 있으며, 배치 값은 양식의 도형 값 그대로다."""
+    from PIL import Image
+    from pptx import Presentation
+    out = tmp_path / "base2.png"
+    daily_ppt.compose_base_image(out, width=1600, slide_index=1)
+    img = Image.open(out)
+    prs = Presentation(str(config.DAILY_TEMPLATE))
+    shapes = {s.shape_id: s for s in prs.slides[1].shapes}
+    center = lambda sh, dx=0.5, dy=0.5: (round((sh.left + sh.width * dx) / prs.slide_width * 1600),
+                                         round((sh.top + sh.height * dy) / prs.slide_height * 900))
+    r, g, b = img.getpixel(center(shapes[10], 0.1, 0.1))                 # '정치 / 치안' 표지: 주황 채움
+    assert r > 200 and 80 < g < 160 and b < 90
+    assert img.getpixel(center(shapes[daily_ppt.ID_POLITICS])) == (255, 255, 255)
+    assert img.getpixel(center(shapes[daily_ppt.ID_ECONOMY])) == (255, 255, 255)
+    lay = daily_ppt.slide2_layout()
+    box = shapes[daily_ppt.ID_POLITICS]
+    assert lay["politics"]["x"] == box.left / prs.slide_width and lay["politics"]["h"] == box.height / prs.slide_width
+    assert lay["economy"]["y"] == shapes[daily_ppt.ID_ECONOMY].top / prs.slide_height
+    assert round(lay["politics"]["head"] * prs.slide_width / 12700) == 12       # 머리줄 12pt
+    assert round(lay["politics"]["sub"] * prs.slide_width / 12700) == 11        # 하위 줄·출처 11pt
+    assert lay["politics"]["center"] is True and abs(lay["politics"]["line"] - 1.8) < 0.01    # 줄 간격 150%

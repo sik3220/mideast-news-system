@@ -142,3 +142,11 @@ details.basis{margin-top:10px;font-size:14px}details.basis summary{cursor:pointe
 .tag.d-raw{background:transparent;color:var(--muted);border:1px dashed #b9b6ad}
 .item .tag.d-full{background:#e2f1e6;color:#1d5a32}
 .mat .mtext{unicode-bidi:isolate}.mat .msrc{color:var(--muted);font-size:13px;white-space:nowrap}
+
+/* ── 일일 PPT 2장 미리보기 ── */
+.slide2{cursor:default}
+.s2box{position:absolute;box-sizing:border-box;border:1px solid #333;display:flex;flex-direction:column;overflow:hidden;
+  font-family:"Malgun Gothic","맑은 고딕",sans-serif;font-weight:700;color:#000;pointer-events:none}
+.s2box p{margin:0;overflow-wrap:anywhere}
+.s2box.over{border:2px solid #c0262d}
+.s2box.over::after{content:"분량 초과 — 내용을 줄이세요";position:absolute;right:0;bottom:0;background:#c0262d;color:#fff;font-size:11px;font-weight:600;padding:1px 6px}

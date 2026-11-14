@@ -72,6 +72,7 @@ def startup() -> None:
         llm.recheck_flags(conn)
     try:
         daily_ppt.ensure_base_image()      # 양식만 넣어 두면 지도 위치 지정 화면의 바탕 그림을 스스로 만든다
+        daily_ppt.ensure_base_image2()
     except Exception as e:                 # 그림을 못 만들어도 앱은 켜져야 한다
         print(f"지도 바탕 그림을 만들지 못함: {type(e).__name__}: {e}")
 
@@ -492,6 +493,8 @@ def daily_page(request: Request):
     return render(request, "daily.html", day=day, data=data, saved=saved, history=history, locations=locations,
                   selected_count=len(selected), template_ok=config.DAILY_TEMPLATE.exists(),
                   base_ok=base_ok, layout=daily_ppt.slide1_layout() if base_ok else None,
+                  base2_ok=base_ok and config.DAILY_BASE_IMAGE2.exists(),
+                  layout2=daily_ppt.slide2_layout() if base_ok and config.DAILY_BASE_IMAGE2.exists() else None,
                   base_ver=int(config.DAILY_BASE_IMAGE.stat().st_mtime) if base_ok else 0, type_labels=daily_ppt.TYPE_LABELS,
                   type_colors=daily_ppt.TYPE_COLORS, msg=request.query_params.get("msg", ""),
                   version=config.DAILY_TEMPLATE_VERSION)
@@ -639,6 +642,13 @@ def daily_base():
     if not config.DAILY_BASE_IMAGE.exists():
         raise HTTPException(404)
     return FileResponse(config.DAILY_BASE_IMAGE)
+
+
+@app.get("/daily/base2.png")
+def daily_base2():
+    if not config.DAILY_BASE_IMAGE2.exists():
+        raise HTTPException(404)
+    return FileResponse(config.DAILY_BASE_IMAGE2)
 
 
 @app.post("/daily/save")

@@ -133,6 +133,7 @@ def soffice_path() -> str | None:
 TEMPLATE_DIR = ROOT / "doc_templates"
 DAILY_TEMPLATE = TEMPLATE_DIR / "daily_template.pptx"
 DAILY_BASE_IMAGE = TEMPLATE_DIR / "daily_base_slide1.png"
+DAILY_BASE_IMAGE2 = TEMPLATE_DIR / "daily_base_slide2.png"       # 2장 미리보기의 바탕(제목·구역 표지)
 WEEKLY_TEMPLATE = TEMPLATE_DIR / "weekly_template.docx"
 # 원본 양식을 바꾸면 이 값을 올린다. 생성 이력에 함께 기록된다.
 DAILY_TEMPLATE_VERSION = "daily-2026.11.10"

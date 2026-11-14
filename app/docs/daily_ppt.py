@@ -404,7 +404,7 @@ def _draw_shape(canvas, el, to_slide, scale: float) -> None:
     canvas.alpha_composite(layer)
 
 
-def compose_base_image(out_png: Path, template: Path | None = None, width: int = 1600) -> None:
+def compose_base_image(out_png: Path, template: Path | None = None, width: int = 1600, slide_index: int = 0) -> None:
     """LibreOffice 없이 만드는 지도 바탕 그림: 원본 1장의 그림과 도형을 쌓인 순서대로 그린다.
 
     지도·확대 지도, Kurds 영역, 범례, Baghdad·Bismayah 표시, 제목을 그리고
@@ -416,10 +416,13 @@ def compose_base_image(out_png: Path, template: Path | None = None, width: int =
     from PIL import Image
     template = template or config.DAILY_TEMPLATE
     prs = Presentation(str(template))
-    slide = prs.slides[0]
+    slide = prs.slides[slide_index]
     scale = width / prs.slide_width
     canvas = Image.new("RGBA", (width, round(prs.slide_height * scale)), (255, 255, 255, 255))
-    skip = {sh.shape_id for sh in slide.shapes if _is_number_marker(sh)} | {ID_DATE, ID_LIST}
+    if slide_index == 0:
+        skip = {sh.shape_id for sh in slide.shapes if _is_number_marker(sh)} | {ID_DATE, ID_LIST}
+    else:
+        skip = {ID_POLITICS, ID_ECONOMY}                 # 2장: 본문 상자는 편집 화면이 직접 그린다
 
     def walk(parent, to_slide):
         for el in parent:
@@ -500,6 +503,40 @@ def ensure_base_image() -> str | None:
             pass                       # 변환 도구가 일부만 있는 경우 등 → 합성으로 넘어간다
     compose_base_image(config.DAILY_BASE_IMAGE)
     return "composed"
+
+
+def ensure_base_image2() -> None:
+    """2장 미리보기의 바탕(제목과 구역 표지). 가볍게 합성하므로 켤 때마다 다시 만든다."""
+    if config.DAILY_TEMPLATE.exists():
+        compose_base_image(config.DAILY_BASE_IMAGE2, slide_index=1)
+
+
+def slide2_layout(template: Path | None = None) -> dict:
+    """편집 화면이 2장 본문을 실제 슬라이드와 같은 자리·서식으로 보여주기 위한 값. 생성기(_fill_body_box)와 같은 출처다.
+
+    위치 x·w 와 크기(h, 글자, 여백)는 슬라이드 폭에 대한 비율, y 는 슬라이드 높이에 대한 비율이다.
+    """
+    prs = Presentation(str(template or config.DAILY_TEMPLATE))
+    slide = prs.slides[1]
+    W, H = prs.slide_width, prs.slide_height
+    out = {}
+    for key, shape_id in (("politics", ID_POLITICS), ("economy", ID_ECONOMY)):
+        sh = _shape(slide, shape_id)
+        tx = sh._element.find(_q("p:txBody"))
+        body, para = tx.find(_q("a:bodyPr")), tx.find(_q("a:p"))
+        ppr = para.find(_q("a:pPr"))
+        sizes = [int(r.find(_q("a:rPr")).get("sz")) for r in para.findall(_q("a:r")) if r.find(_q("a:rPr")).get("sz")]
+        head = sizes[0] if sizes else 1200
+        sub = next((s for s in sizes if s < head), head - 100)
+        pts = lambda path, default: int(e.get("val")) / 100 if (e := ppr.find(path)) is not None else default
+        out[key] = {"x": sh.left / W, "y": sh.top / H, "w": sh.width / W, "h": sh.height / W,
+                    "pad_l": int(body.get("lIns", "91440")) / W, "mar_l": int(ppr.get("marL", "0")) / W,
+                    "head": head / 100 * EMU_PER_PT / W, "sub": sub / 100 * EMU_PER_PT / W,
+                    "before": pts(_q("a:spcBef") + "/" + _q("a:spcPts"), 0) * EMU_PER_PT / W,
+                    "after": pts(_q("a:spcAft") + "/" + _q("a:spcPts"), 0) * EMU_PER_PT / W,
+                    "line": pts(_q("a:lnSpc") + "/" + _q("a:spcPct"), 100000) / 1000 * 1.2,
+                    "center": body.get("anchor") == "ctr"}
+    return out
 
 
 def render_base_image(out_png: Path, template: Path | None = None) -> None:
