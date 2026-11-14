@@ -23,7 +23,7 @@
     {% for v in a.verification %}<span class="chip {{ 'warn' if '미확인' in v or '미상' in v else '' }}">{{ v }}</span>{% endfor %}
     {% if a.stage %}<span class="chip">단계: {{ a.stage }}</span>{% endif %}
   </div>
-  <p class="hint">{% if a.summary_basis == '본문 기반' %}이 요약은 붙여 넣은 원문 본문을 근거로 만들었습니다.{% else %}원문 본문은 자동으로 가져오지 않습니다. 지금 요약은 {{ '제목과 검색 요약' if a.snippet else '제목' }}만을 근거로 하므로, 세부 내용은 원문에서 확인하거나 아래에 본문을 붙여 넣어 다시 만드세요.{% endif %}
+  <p class="hint">{% if a.summary_basis == '본문 기반' %}이 요약은 붙여 넣은 원문 본문을 근거로 만들었습니다.{% elif (a.summary_basis or '').startswith('웹 검색 기반') %}이 요약은 Claude 가 웹에서 찾아 읽은 기사 본문을 근거로 만들었습니다({{ a.summary_basis }}). 원문과 다르면 아래에 본문을 붙여 넣어 다시 만드세요.{% else %}기사를 체크하면 Claude 가 웹에서 본문을 찾아 세부 내용을 채웁니다. 지금 요약은 {{ '제목과 검색 요약' if a.snippet else '제목' }}만을 근거로 하므로, 세부 내용은 원문에서 확인하거나 아래에 본문을 붙여 넣어 다시 만드세요.{% endif %}
     추천 점수는 중요도이고 사실 확인 여부와 별개입니다.</p>
   {% if a.summary_flags %}<div class="errbox"><b>요약 점검</b><ul class="plain">{% for f in a.summary_flags %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
 

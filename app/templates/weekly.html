@@ -38,11 +38,12 @@
       <button type="button" class="mini" data-all="1">모두 체크</button><button type="button" class="mini" data-all="0">모두 해제</button></h3>
     <div class="matsec">
     {% for m in group %}
-    <label class="mat {{ m.origin }}">
-      <input type="checkbox" name="mat" value="{{ m.key }}" {{ 'checked' if m.on }}>
+    <label class="mat {{ m.origin }}" data-md="{{ m.day|md }}" data-src="{{ m.src or '' }}">
+      <input type="checkbox" name="mat" value="{{ m.key }}" {{ 'checked' if m.on }}
+             {% if research_on and m.researchable %}data-research="{{ m.article_id }}"{% endif %}>
       <input type="hidden" name="mat_all" value="{{ m.key }}">
       <span><b class="mday">{{ m.day|md }}</b><span class="tag {{ m.origin }}">{{ m.label }}</span>{% if m.origin in ('selected', 'recommended') %}<span class="tag plain">{{ m.basis }}</span>{% endif %}
-        <span dir="auto">{{ m.head }}</span>
+        <span dir="auto" data-head>{{ m.head }}</span>
         {% for s in m.subs %}<span class="msub">{{ s }}</span>{% endfor %}</span>
     </label>
     {% endfor %}

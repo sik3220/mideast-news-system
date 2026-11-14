@@ -71,6 +71,24 @@ def llm_weekly_model() -> str:
     return os.environ.get("LLM_WEEKLY_MODEL") or "claude-sonnet-5-5"
 
 
+def llm_research_model() -> str:
+    """체크한 기사의 본문을 웹에서 찾아 읽고 쓰는 모델. 웹 검색·읽기 도구를 쓸 수 있는 모델이어야 한다."""
+    return os.environ.get("LLM_RESEARCH_MODEL") or "claude-sonnet-5-5"
+
+
+def auto_research() -> bool:
+    """기사를 체크하면 본문을 웹에서 찾아 세부 내용을 채울지. .env 에 AUTO_RESEARCH=0 이면 끈다."""
+    return os.environ.get("AUTO_RESEARCH", "1").strip().lower() not in ("0", "false", "no")
+
+
+def research_daily_max() -> int:
+    """하루에 본문을 찾아볼 기사 수 상한(비용 보호). 0 이면 상한 없음."""
+    try:
+        return int(os.environ.get("RESEARCH_DAILY_MAX") or 15)
+    except ValueError:
+        return 15
+
+
 def summarize_korean() -> bool:
     """한국어 기사도 문체 규칙대로 다시 쓸지. .env 에 SUMMARIZE_KOREAN=0 이면 원래 제목 그대로 둔다."""
     return os.environ.get("SUMMARIZE_KOREAN", "1").strip().lower() not in ("0", "false", "no")

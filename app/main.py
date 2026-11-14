@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from . import config, db, demo, draft, enrich, llm, pipeline, ranking, timeutil, weekly
+from . import config, db, demo, draft, enrich, llm, pipeline, ranking, research, timeutil, weekly
 from .docs import daily_ppt, preview, weekly_word
 from .docs.items import items_to_text
 
@@ -38,6 +38,7 @@ def render(request: Request, name: str, **ctx):
                topics={k: v["label"] for k, v in cfg["topics"].items()}, categories=CATEGORIES,
                regions=list(cfg["regions"]) + ["기타 중동"], lang_names=LANG_NAMES,
                preview_ready=preview.available(),
+               research_on=config.auto_research() and config.llm_configured() and not config.demo_mode(),
                # 화면 파일을 고치면 주소가 바뀌어 브라우저가 옛 파일을 쓰지 않는다.
                static_ver=int(max((BASE / "static" / f).stat().st_mtime for f in ("style.css", "app.js"))))
     return templates.TemplateResponse(request, name, ctx)
@@ -96,7 +97,7 @@ def index(request: Request):
     stale = sum(a["summary_status"] == "ok" and llm.needs_summary(a) for a in articles)
     return render(request, "index.html", d_from=d_from, d_to=d_to, f=filters, articles=articles, run=run,
                   sections=pipeline.sections(articles), stale=stale,
-                  usage=usage, over_budget=over_budget, budget=config.daily_budget(),
+                  usage=usage, over_budget=over_budget, budget=config.daily_budget(), research_max=config.research_daily_max(),
                   # 자동 실행은 첫 화면 추천과 관심 주제 탭에서만. 필터·검색·전체 보기는 버튼으로만 요약한다.
                   auto=bool(unsummarized) and config.llm_configured() and config.auto_summarize()
                   and q.get("noauto") != "1" and not show_all and not over_budget
@@ -170,6 +171,26 @@ async def select(article_id: int, request: Request):
         count = conn.execute("SELECT COUNT(*) c FROM articles WHERE selected=1 AND is_demo=?",
                              (int(config.demo_mode()),)).fetchone()["c"]
     return JSONResponse({"ok": True, "selected_count": count})
+
+
+@app.post("/api/article/{article_id}/research")
+async def api_research(article_id: int):
+    """체크한 기사의 본문을 Claude 가 웹에서 찾아 읽고 제목 줄·세부 항목을 채운다(기사당 한 번, 하루 건수 상한)."""
+    if not config.auto_research():
+        return JSONResponse({"status": "off"})
+
+    def work():
+        with db.session() as conn:
+            a = db.get_article(conn, article_id)
+            if not a:
+                return None
+            out = research.research_article(conn, a)
+            out.update(used=research.used_today(conn), limit=config.research_daily_max())
+            return out
+    out = await run_in_threadpool(work)
+    if out is None:
+        raise HTTPException(404)
+    return JSONResponse(out)
 
 
 @app.post("/events/merge")

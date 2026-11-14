@@ -141,7 +141,7 @@ def needs_summary(a: dict) -> bool:
     """요약이 없거나, 예전 지시문으로 만든 요약이면 True. 사용자가 직접 쓴 것은 건드리지 않는다."""
     if a.get("lang") == "ko" and not config.summarize_korean() and a["summary_status"] != "failed":
         return False               # 한국어 기사는 원래 제목 그대로 쓰도록 설정한 경우
-    if a["summary_status"] == "ok" and a.get("summary_basis") == "본문 기반":
+    if a["summary_status"] == "ok" and str(a.get("summary_basis") or "").startswith(("본문 기반", "웹 검색 기반")):
         return False               # 본문을 읽고 만든 요약을 제목만 보고 다시 쓰지 않는다
     return a["summary_status"] != "ok" or (a.get("summary_ver") or 0) < SUMMARY_VERSION
 
@@ -351,10 +351,10 @@ def style_examples(conn) -> str:
 # ───────── 사용량 기록과 일일 한도 ─────────
 
 def record_usage(conn, usage: dict) -> None:
-    conn.execute("INSERT INTO llm_usage (at, day, model, purpose, input, output, cache_read, cache_write) "
-                 "VALUES (?,?,?,?,?,?,?,?)", (iso(now_utc()), today_baghdad().isoformat(), usage["model"],
-                                              usage["purpose"], usage["input"], usage["output"],
-                                              usage["cache_read"], usage["cache_write"]))
+    conn.execute("INSERT INTO llm_usage (at, day, model, purpose, input, output, cache_read, cache_write, searches) "
+                 "VALUES (?,?,?,?,?,?,?,?,?)", (iso(now_utc()), today_baghdad().isoformat(), usage["model"],
+                                                usage["purpose"], usage["input"], usage["output"],
+                                                usage["cache_read"], usage["cache_write"], usage.get("searches", 0)))
 
 
 def estimate_cost(row: dict, prices: dict) -> float | None:
@@ -363,8 +363,9 @@ def estimate_cost(row: dict, prices: dict) -> float | None:
     if not price:
         return None
     p_in, p_out = float(price[0]), float(price[1])
+    search = float(config.topics_config().get("web_search_price_usd", 0.01)) * (row.get("searches") or 0)
     return (row["input"] * p_in + row["cache_read"] * p_in * 0.1 + row["cache_write"] * p_in * 1.25
-            + row["output"] * p_out) / 1_000_000
+            + row["output"] * p_out) / 1_000_000 + search
 
 
 def usage_today(conn) -> dict:
@@ -373,13 +374,16 @@ def usage_today(conn) -> dict:
     rows = [dict(r) for r in conn.execute("SELECT * FROM llm_usage WHERE day=?", (today_baghdad().isoformat(),))]
     costs = [estimate_cost(r, prices) for r in rows]
     return {"calls": len(rows), "cost": sum(c for c in costs if c is not None),
+            "auto_cost": sum(c for r, c in zip(rows, costs) if c is not None and r["purpose"] != "research"),
+            "research": sum(r["purpose"] == "research" for r in rows),
             "unpriced": sum(c is None for c in costs),
             "tokens": sum(r["input"] + r["output"] + r["cache_read"] + r["cache_write"] for r in rows)}
 
 
 def budget_exceeded(conn) -> bool:
+    """자동 번역·묶기의 하루 한도. 본문 찾기(research)는 건수 상한으로 따로 막으므로 여기서는 빼고 센다."""
     budget = config.daily_budget()
-    return budget > 0 and usage_today(conn)["cost"] >= budget
+    return budget > 0 and usage_today(conn)["auto_cost"] >= budget
 
 
 # ───────── 같은 사건 묶기 ─────────

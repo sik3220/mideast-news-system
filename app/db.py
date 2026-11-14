@@ -97,6 +97,8 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     # 이전 버전으로 만든 DB 에 새 열을 더한다.
     columns = {r["name"] for r in conn.execute("PRAGMA table_info(articles)")}
+    if "searches" not in {r["name"] for r in conn.execute("PRAGMA table_info(llm_usage)")}:
+        conn.execute("ALTER TABLE llm_usage ADD COLUMN searches INTEGER NOT NULL DEFAULT 0")   # 웹 검색 횟수
     if "group_note" not in columns:
         conn.execute("ALTER TABLE articles ADD COLUMN group_note TEXT")
     if "rule_category" not in columns:

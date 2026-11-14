@@ -13,7 +13,7 @@ from datetime import date, timedelta
 
 from pydantic import BaseModel
 
-from . import config, db, llm, pipeline, ranking, timeutil
+from . import config, db, llm, pipeline, ranking, research, timeutil
 from .docs.items import items_to_text, parse_items
 
 MAX_RECOMMENDED = 30           # '추천만' 재료로 보여줄 최대 건수
@@ -97,7 +97,8 @@ def materials(conn, data: dict, demo: bool = False) -> list[dict]:
         seen.add(a["id"])
         day = a.get("published_date") or start
         out.append({"key": f"a{a['id']}", "day": day, "origin": origin, "article_id": a["id"], "article": a,
-                    "needs": llm.needs_summary(a),
+                    "needs": llm.needs_summary(a), "researchable": research.eligible(a),
+                    "src": ranking.source_display(a, cfg),
                     "head": f"{timeutil.md(day)}, {title} ({ranking.source_display(a, cfg)})",
                     "subs": [_sub(x) for x in (a.get("ko_summary") or "").split("\n") if x.strip()],
                     "tag": a.get("category") or "", "section": _section(a.get("category") or "", a.get("region") or ""),

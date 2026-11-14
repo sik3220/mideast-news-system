@@ -2,11 +2,12 @@
 {% set page = 'index' %}
 {# 보고서 형식의 항목: 제목 줄(날짜, 주체, 조치 (출처, 날짜)) + 그 아래 세부 줄 #}
 {% macro item(a, qs) %}
-<article class="item {{ 'sel' if a.selected }}">
+<article class="item {{ 'sel' if a.selected }}" data-md="{{ a.published_date|md }}">
   <input type="checkbox" id="pick{{ a.id }}" data-select="{{ a.id }}" {{ 'checked' if a.selected }}
+         {{ 'data-research' if research_on and a.url.startswith('http') and not a.social and not (a.summary_basis or '').startswith(('본문 기반', '웹 검색 기반')) }}
          aria-label="선택: {{ a.ko_title or a.title }}">
   <div class="body">
-    <h3><a href="/article/{{ a.id }}?back={{ qs|urlencode }}" dir="auto">{{ a.published_date|md }}, {{ a.ko_title or a.title }}</a>
+    <h3><a href="/article/{{ a.id }}?back={{ qs|urlencode }}" dir="auto" data-title>{{ a.published_date|md }}, {{ a.ko_title or a.title }}</a>
       <span class="src">({{ a|src }}, {{ a.published_date|md }})</span></h3>
     {% for line in (a.ko_summary or '').split('\n') if line.strip() %}<p class="sub">{{ line if line.startswith('☞') else '* ' ~ line }}</p>{% endfor %}
     {% for f in a.summary_flags %}<p class="flag"><b>확인</b>{{ f }}</p>{% endfor %}
@@ -14,7 +15,7 @@
     <div class="foot">
       {% for t in a.topics if t != 'korea_media' %}<span class="tag">{{ topics[t] }}</span>{% endfor %}
       {% if a.social %}<span class="tag warn">SNS 글 · 여론 참고용</span>{% endif %}
-      {% if a.summary_basis == '본문 기반' %}<span class="tag plain">본문 기반</span>{% endif %}
+      {% if (a.summary_basis or '').startswith(('본문 기반', '웹 검색 기반')) %}<span class="tag plain">{{ a.summary_basis }}</span>{% endif %}
       {% if a.n_sources >= 2 %}<span>매체 {{ a.n_sources }}곳</span>{% endif %}
       {% if a.url.startswith('http') %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문 열기</a>{% else %}<span>직접 추가</span>{% endif %}
       {% if a.related %}
@@ -42,7 +43,7 @@
     <button class="primary" type="submit" {{ 'disabled' if demo }}>새 기사 수집</button>
     <span class="spinner" role="status">수집·번역 중입니다… 1분쯤 걸립니다.</span>
     <span class="status grow">
-      {% if llm_ready and usage.calls %}<span class="meta" title="config/topics.yaml 의 단가로 계산한 추정치입니다. 실제 청구액은 Anthropic 콘솔에서 확인하세요.">오늘 Claude 호출 {{ usage.calls }}회 · 약 ${{ '%.3f'|format(usage.cost) }}{% if budget %} / 한도 ${{ '%.2f'|format(budget) }}{% endif %} (추정)</span> · {% endif %}
+      {% if llm_ready and usage.calls %}<span class="meta" title="config/topics.yaml 의 단가로 계산한 추정치입니다. 실제 청구액은 Anthropic 콘솔에서 확인하세요. 자동 번역은 금액 한도(DAILY_BUDGET_USD), 본문 찾기는 건수 상한(RESEARCH_DAILY_MAX)으로 막습니다.">오늘 Claude 호출 {{ usage.calls }}회 · 약 ${{ '%.3f'|format(usage.cost) }} (추정){% if research_on %} · 본문 찾기 {{ usage.research }}{% if research_max %}/{{ research_max }}{% endif %}건{% endif %}</span> · {% endif %}
       {% if demo %}데모 모드
       {% elif not run %}기간을 정하고 수집을 누르세요
       {% else %}

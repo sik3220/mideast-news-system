@@ -133,3 +133,5 @@ details.basis{margin-top:10px;font-size:14px}details.basis summary{cursor:pointe
 .mats h3.sub{font-size:14px;z-index:1;border-bottom:1px solid var(--line)}
 .mats button.mini{font-size:12px;padding:1px 8px;margin-left:6px;font-weight:400;color:var(--muted)}
 .mat .mday{display:inline-block;min-width:44px;font-weight:600;color:var(--muted);font-size:13px}
+.rs{font-size:12.5px;color:var(--muted)}.rs.busy{color:var(--focus)}.rs.busy::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--focus);margin-right:5px;animation:pulse 1s infinite alternate}
+.mat .rs{display:block;margin-left:12px}
