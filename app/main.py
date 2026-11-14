@@ -382,16 +382,19 @@ def _file_row(file_id: int) -> tuple[dict, Path]:
     return dict(row), path
 
 
+def download_name(kind: str, key: str) -> str:
+    """내려받을 때의 파일명. 일일은 평소 쓰는 틀 '일일정보보고(MM.DD)'."""
+    d = date.fromisoformat(key[:10])
+    if kind == "daily":
+        return f"일일정보보고({d.month:02d}.{d.day:02d}).pptx"
+    r = d + timedelta(days=7)
+    return f"주간_종합_상황보고_{r.month}.{r.day}.docx"
+
+
 @app.get("/files/{file_id}")
 def download(file_id: int):
     row, path = _file_row(file_id)
-    d = date.fromisoformat(row["key"][:10])
-    if row["kind"] == "daily":
-        name = f"일일_정세현황_{d.month}.{d.day}.pptx"
-    else:
-        r = date.fromisoformat(row["key"][:10]) + timedelta(days=7)
-        name = f"주간_종합_상황보고_{r.month}.{r.day}.docx"
-    return FileResponse(path, filename=name)
+    return FileResponse(path, filename=download_name(row["kind"], row["key"]))
 
 
 @app.get("/files/{file_id}/preview")

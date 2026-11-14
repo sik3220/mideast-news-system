@@ -230,3 +230,10 @@ def test_slide1_layout_matches_template_shapes():
     assert lay["list"]["x"] == box.left / prs.slide_width
     assert lay["list"]["y"] == box.top / prs.slide_height
     assert lay["list"]["line_h"] == daily_ppt.LIST_LINE_EMU / prs.slide_width
+
+
+def test_daily_download_name_uses_the_usual_file_name():
+    from app.main import download_name
+    assert download_name("daily", "2026-11-09") == "일일정보보고(11.09).pptx"
+    assert download_name("daily", "2026-11-14") == "일일정보보고(11.14).pptx"
+    assert download_name("weekly", "2026-11-12") == "주간_종합_상황보고_11.19.docx"
