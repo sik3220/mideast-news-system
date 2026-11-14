@@ -339,3 +339,27 @@ def test_slide2_preview_base_and_layout_follow_the_template(tmp_path):
     assert round(lay["politics"]["head"] * prs.slide_width / 12700) == 12       # 머리줄 12pt
     assert round(lay["politics"]["sub"] * prs.slide_width / 12700) == 11        # 하위 줄·출처 11pt
     assert lay["politics"]["center"] is True and abs(lay["politics"]["line"] - 1.8) < 0.01    # 줄 간격 150%
+
+
+@needs_ppt
+def test_slide2_font_sizes_follow_the_fixed_rule_whatever_the_template_has(tmp_path):
+    """2장 글자 크기 규칙: 제목 12pt, 머리줄 끝의 (출처, 날짜) 11pt, '*'·'☞' 세부 내용 11pt. 양식의 크기가 달라도 같다."""
+    from pptx import Presentation
+    from pptx.util import Pt
+    odd = tmp_path / "odd_template.pptx"                             # 첫 항목 글자 크기를 일부러 바꾼 양식
+    prs = Presentation(str(config.DAILY_TEMPLATE))
+    for sid in (daily_ppt.ID_POLITICS, daily_ppt.ID_ECONOMY):
+        for r in daily_ppt._shape(prs.slides[1], sid).text_frame.paragraphs[0].runs:
+            r.font.size = Pt(10)
+    prs.save(str(odd))
+    data = {"date": "2026-11-14", "events": [], "no_event_text": "특이사항 없음",
+            "politics": "11.14, 쿠르드 자치정부(KRG) 총리, 예산 배분 논의 (Rudaw, 11.14)\n* 배분율 상향 요구\n☞ 중앙정부, 협의 지속 입장",
+            "economy": "11.14, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.14)\n* Trump 대통령, 합의 불필요 표명"}
+    for template in (None, odd):
+        out = tmp_path / f"sizes_{'odd' if template else 'std'}.pptx"
+        daily_ppt.generate(data, out, template)
+        runs = daily_ppt._shape(Presentation(str(out)).slides[1], daily_ppt.ID_POLITICS).text_frame.paragraphs[0].runs
+        sizes = {r.text.strip(): r.font.size.pt for r in runs}
+        assert sizes["11.14, 쿠르드 자치정부(KRG) 총리, 예산 배분 논의"] == 12       # 제목(중간 괄호 포함) 12pt
+        assert sizes["(Rudaw, 11.14)"] == 11                                         # 출처 괄호 11pt
+        assert sizes["* 배분율 상향 요구"] == 11 and sizes["☞ 중앙정부, 협의 지속 입장"] == 11

@@ -29,6 +29,10 @@ LIST_LINE_EMU = 222107          # 사건 목록 한 줄 높이(원본 1줄 상�
 LIST_FONT_EMU = 139700          # 11pt
 LIST_RIGHT_MARGIN = 180000
 EMU_PER_PT = 12700
+# 2장 본문의 글자 크기(담당자가 정한 서식 규칙, 1/100 pt). 양식 파일의 상태와 무관하게 항상 이 크기로 쓴다.
+HEAD_SIZE = 1200            # 제목(머리줄) 12pt
+SOURCE_SIZE = 1100          # 머리줄 끝의 (출처, 날짜) 11pt
+SUB_SIZE = 1100             # '*'·'☞' 로 시작하는 세부 내용 11pt
 
 
 def _q(tag: str) -> str:
@@ -174,9 +178,8 @@ def _fill_body_box(shape, text: str, label: str, warnings: list[str]) -> None:
         tx.remove(p)
     ppr = proto.find(_q("a:pPr"))
     rprs = [r.find(_q("a:rPr")) for r in proto.findall(_q("a:r"))]
-    head_rpr = rprs[0]
-    head_size = int(head_rpr.get("sz", "1200"))
-    sub_size = next((int(r.get("sz")) for r in rprs if r.get("sz") and int(r.get("sz")) < head_size), head_size - 100)
+    head_rpr = rprs[0]                               # 글꼴·굵기·색은 양식의 서식을 복제하고, 크기만 규칙대로 지정한다
+    head_size, sub_size = HEAD_SIZE, SUB_SIZE
     br_proto = proto.find(_q("a:br"))
     end_proto = proto.find(_q("a:endParaRPr"))
 
@@ -188,9 +191,9 @@ def _fill_body_box(shape, text: str, label: str, warnings: list[str]) -> None:
         p.append(copy.deepcopy(ppr))
         m = _SOURCE_TAIL.match(it["head"])
         head, source = (m.group(1), m.group(2)) if m else (it["head"], "")
-        p.append(_make_run(head_rpr, " " + head.strip() + (" " if source else "")))
+        p.append(_make_run(head_rpr, " " + head.strip() + (" " if source else ""), head_size))
         if source:
-            p.append(_make_run(head_rpr, source.strip(), sub_size))   # 원본: (출처, 날짜)는 한 단계 작은 글자
+            p.append(_make_run(head_rpr, source.strip(), SOURCE_SIZE))   # (출처, 날짜)는 11pt
         head_lines = estimate_lines(it["head"], head_size / 100, width_pt)
         height_pt += head_lines * head_size / 100 * 1.8 + 18        # 줄간격 150% + 문단 앞 12pt·뒤 6pt
         for sub in it["subs"]:
@@ -525,9 +528,7 @@ def slide2_layout(template: Path | None = None) -> dict:
         tx = sh._element.find(_q("p:txBody"))
         body, para = tx.find(_q("a:bodyPr")), tx.find(_q("a:p"))
         ppr = para.find(_q("a:pPr"))
-        sizes = [int(r.find(_q("a:rPr")).get("sz")) for r in para.findall(_q("a:r")) if r.find(_q("a:rPr")).get("sz")]
-        head = sizes[0] if sizes else 1200
-        sub = next((s for s in sizes if s < head), head - 100)
+        head, sub = HEAD_SIZE, SUB_SIZE                  # 생성기와 같은 규칙 값
         pts = lambda path, default: int(e.get("val")) / 100 if (e := ppr.find(path)) is not None else default
         out[key] = {"x": sh.left / W, "y": sh.top / H, "w": sh.width / W, "h": sh.height / W,
                     "pad_l": int(body.get("lIns", "91440")) / W, "mar_l": int(ppr.get("marL", "0")) / W,
