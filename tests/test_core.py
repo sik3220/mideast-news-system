@@ -171,9 +171,30 @@ def test_importance_and_verification_are_separate():
 
 # ───────── 요약 점검 ─────────
 
+import re as _re
+
+_ARTICLE = _re.compile(r'<article id="(\d+)">.*?제목: (.*?)\n', _re.S)
+
+
+def _namespace(parse):
+    """Haiku 는 client.messages, fallback 지원 모델은 client.beta.messages 로 호출된다. 둘 다 받는다."""
+    m = SimpleNamespace(parse=parse)
+    return SimpleNamespace(messages=m, beta=SimpleNamespace(messages=m))
+
+
+def _batch(text, make):
+    items = []
+    for aid, title in _ARTICLE.findall(text):
+        s = make(title)
+        if s is not None:
+            items.append(llm.BatchItem(id=int(aid), title=s.ko_title, subs=[x for x in s.ko_summary.split("\n") if x],
+                                       tag=s.category, stage=s.stage, claim_type=s.claim_type, followups=s.followups))
+    usage = SimpleNamespace(input_tokens=1000, output_tokens=200, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+    return SimpleNamespace(stop_reason="end_turn", parsed_output=llm.Batch(items=items), usage=usage)
+
+
 def _fake_client(summary):
-    parse = lambda **kw: SimpleNamespace(stop_reason="end_turn", parsed_output=summary)
-    return SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(parse=parse)))
+    return _namespace(lambda **kw: _batch(kw["messages"][0]["content"], lambda title: summary))
 
 
 def test_tentative_input_is_not_strengthened_to_signed():
@@ -209,7 +230,7 @@ def test_summary_is_labelled_as_title_based_and_failure_keeps_original(conn):
     bid, _ = db.upsert_article(conn, make_article("https://example.com/b", "Another Iraq item"))
     def boom(**kw):
         raise TimeoutError("timed out")
-    broken = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(parse=boom)))
+    broken = _namespace(boom)
     assert llm.summarize_article(conn, db.get_article(conn, bid), broken) == "failed"
     b = db.get_article(conn, bid)
     assert b["summary_status"] == "failed" and b["title"] == "Another Iraq item" and b["url"]
@@ -315,43 +336,58 @@ def test_filters_and_small_lists_are_not_trimmed(conn):
 # ───────── 추천분 자동 요약과 같은 사건 묶기 ─────────
 
 class FakeLLM:
-    """요약은 '요약: 원제목', 묶기는 미리 정한 답을 돌려주는 가짜 클라이언트. 호출 횟수를 센다."""
+    """요약은 '요약: 원제목', 묶기는 미리 정한 답을 돌려주는 가짜 클라이언트. 호출 횟수와 요약한 기사 수를 센다."""
 
-    def __init__(self, groups=None, fail_titles=()):
-        self.groups, self.fail_titles = groups or (lambda articles_text: []), fail_titles
-        self.summary_calls, self.group_calls = 0, 0
-        self.beta = SimpleNamespace(messages=SimpleNamespace(parse=self.parse))
+    def __init__(self, groups=None, fail_titles=(), drop_titles=()):
+        self.groups, self.fail_titles, self.drop_titles = groups or (lambda text: []), fail_titles, drop_titles
+        self.summary_calls, self.group_calls, self.summarized = 0, 0, 0
+        ns = _namespace(self.parse)
+        self.messages, self.beta = ns.messages, ns.beta
 
     def parse(self, **kw):
         text = kw["messages"][0]["content"]
         if kw["output_format"] is llm.EventGroups:
             self.group_calls += 1
             groups = [llm.EventGroup(ids=g, reason="같은 일") for g in self.groups(text)]
-            return SimpleNamespace(stop_reason="end_turn", parsed_output=llm.EventGroups(groups=groups))
+            return SimpleNamespace(stop_reason="end_turn", parsed_output=llm.EventGroups(groups=groups), usage=None)
         self.summary_calls += 1
-        title = next(ln for ln in text.splitlines() if ln.startswith("제목: "))[4:]
-        if any(f in title for f in self.fail_titles):
+        if any(f in text for f in self.fail_titles):
             raise TimeoutError("timed out")
-        out = llm.Summary(ko_title="요약: " + title[:30], ko_summary="한 문장.", category="기타", stage="해당없음",
-                          claim_type="언론 보도", followups=[])
-        return SimpleNamespace(stop_reason="end_turn", parsed_output=out)
+
+        def make(title):
+            if any(d in title for d in self.drop_titles):
+                return None                                   # 응답에서 이 기사만 빠뜨린다
+            self.summarized += 1
+            return llm.Summary(ko_title="요약: " + title[:30], ko_summary="하위 한 줄", category="기타",
+                               stage="해당없음", claim_type="언론 보도", followups=[])
+        return _batch(text, make)
 
 
-def test_view_is_summarized_once_and_failures_are_reported(conn):
+def test_view_is_summarized_once_and_missing_items_are_reported(conn):
     from app import enrich
     _many(conn, 6, "Iraq attack")
     db.upsert_article(conn, make_article("https://example.com/bad", "Iraq oil BROKEN item"))
     pipeline.recompute(conn)
-    fake = FakeLLM(fail_titles=("BROKEN",))
+    fake = FakeLLM(drop_titles=("BROKEN",))
     total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
-    assert (total["ok"], total["failed"]) == (6, 1) and "TimeoutError" in total["first_error"]
+    assert (total["ok"], total["failed"]) == (6, 1) and "빠져" in total["first_error"]
+    assert fake.summary_calls == 1                        # 7건을 한 번의 호출로 보냈다
     shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
     assert sum(a["ko_title"] is not None and a["ko_title"].startswith("요약: ") for a in shown) == 6
     assert next(a for a in shown if "BROKEN" in a["title"])["summary_status"] == "failed"
-    calls = fake.summary_calls
-    again = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=FakeLLM())
-    assert again["ok"] == 1 and calls == 7                # 이미 요약한 6건은 다시 호출하지 않는다
-    assert "번역 6건" in enrich.message(total) and "실패 1건" in enrich.message(total)
+    again = FakeLLM()
+    enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=again)
+    assert again.summarized == 1                          # 이미 요약한 6건은 다시 보내지 않는다
+    assert "요약 6건" in enrich.message(total) and "실패 1건" in enrich.message(total)
+
+
+def test_a_failed_call_fails_only_its_own_batch(conn, monkeypatch):
+    monkeypatch.setattr(llm, "BATCH_SIZE", 3)
+    _many(conn, 5, "Iraq attack")
+    db.upsert_article(conn, make_article("https://example.com/bad", "Iraq oil BROKEN item"))
+    pipeline.recompute(conn)
+    counts = llm.summarize_batch(conn, db.all_articles(conn), FakeLLM(fail_titles=("BROKEN",)))
+    assert counts["calls"] == 2 and counts["ok"] == 3 and counts["failed"] == 3 and "TimeoutError" in counts["first_error"]
 
 
 def test_same_event_articles_are_merged_and_slot_is_refilled(conn):
@@ -442,12 +478,12 @@ def test_summaries_from_an_older_instruction_are_redone_once_but_user_text_is_ke
     enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
     assert db.get_article(conn, a)["ko_title"].startswith("요약: ") and db.get_article(conn, b)["ko_title"] == "내가 쓴 제목"
     enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
-    assert fake.summary_calls == 1
+    assert fake.summarized == 1
 
 
 def test_everything_shown_is_translated_in_one_run_even_beyond_one_batch(conn, monkeypatch):
     from app import enrich
-    monkeypatch.setattr(llm, "MAX_PER_BATCH", 6)          # 한 번에 보내는 건수보다 보이는 기사가 많은 상황
+    monkeypatch.setattr(llm, "BATCH_SIZE", 6)             # 한 번에 보내는 건수보다 보이는 기사가 많은 상황
     _many(conn, 30, "Iraq attack")
     pipeline.recompute(conn)
     total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=FakeLLM())
@@ -483,7 +519,7 @@ def test_us_iran_news_without_iraq_is_recommended_in_international_section(conn)
     shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
     by = {a["title"]: a for a in shown}
     assert by["Vance weighs direct talks with Iran security chief"]["pick_reason"] == "국제 구역 상위"
-    assert by["Oil up 1% as Brent and WTI rebound"]["pick_reason"] == "경제 구역 상위"
+    assert by["Oil up 1% as Brent and WTI rebound"]["pick_reason"] == "유가 구역 상위"
     names = dict(pipeline.sections(shown))
     assert [a["title"] for a in names["국제"]] == ["Vance weighs direct talks with Iran security chief"]
 
@@ -526,3 +562,95 @@ def test_longer_periods_show_proportionally_more(conn):
     pipeline.recompute(conn)
     assert len(pipeline.dashboard_list(conn, "2026-11-10", "2026-11-11", {}, False)[0]) == 20
     assert len(pipeline.dashboard_list(conn, "2026-11-08", "2026-11-11", {}, False)[0]) == 40
+
+
+# ───────── 문체 규칙 적용과 요금 절감 ─────────
+
+def test_summarizing_does_not_reshuffle_the_recommendation(conn):
+    """Claude 가 붙인 태그가 규칙 분류와 달라도 추천 구성은 그대로다(다시 요약할 기사가 생기지 않는다)."""
+    from app import enrich
+    _many(conn, 40, "Iraq attack")
+    _many(conn, 10, "Iraq oil")
+    _many(conn, 10, "Iraq parliament")
+    pipeline.recompute(conn)
+    before = [a["id"] for a in pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)[0]]
+    fake = FakeLLM()                                       # 모든 기사에 '기타' 태그를 붙인다
+    total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
+    after = [a["id"] for a in pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)[0]]
+    assert sorted(before) == sorted(after) and total["remaining"] == 0
+    assert fake.summarized == len(before) == 20 and fake.summary_calls == 2      # 20건 = 10건씩 두 번 호출
+    assert fake.group_calls == 1
+
+
+def test_tags_drive_display_sections_and_bismayah_is_politics(conn):
+    db.upsert_article(conn, make_article("https://example.com/b", "Hanwha Bismayah payment paperwork finalized"))
+    aid, _ = db.upsert_article(conn, make_article("https://example.com/s", "Iraq army raises alert level"))
+    oid, _ = db.upsert_article(conn, make_article("https://example.com/o", "Brent and WTI oil prices slip"))
+    pipeline.recompute(conn)
+    rows = {a["title"]: a for a in db.all_articles(conn)}
+    assert rows["Hanwha Bismayah payment paperwork finalized"]["category"] == "정치"     # 문체 규칙 8절
+    assert rows["Brent and WTI oil prices slip"]["category"] == "유가"
+    conn.execute("UPDATE articles SET category='치안', summary_status='ok', ko_title='이라크軍, 경계태세 격상', summary_ver=3 WHERE id=?", (aid,))
+    pipeline.recompute(conn)
+    names = dict(pipeline.sections(pipeline.list_articles(conn, "2026-11-10", "2026-11-10")))
+    assert [a["id"] for a in names["치안"]] == [aid] and [a["id"] for a in names["유가"]] == [oid]
+    assert "치안 · 테러" not in names
+
+
+def test_sub_items_are_stored_as_lines_and_used_in_draft(conn):
+    aid, _ = db.upsert_article(conn, make_article("https://example.com/k", "Iraqi army declares Level C alert amid KH tension"))
+    pipeline.recompute(conn)
+    s = llm.Summary(ko_title="이라크軍, KH와의 긴장 고조 속 최고경계태세(Level C) 발령",
+                    ko_summary="Al-Zaidi 총리, 밀수 연루 의혹 조사 지시\nKH 측, 승인 없는 진입 시 발포 위협",
+                    category="치안", stage="해당없음", claim_type="언론 보도", followups=[])
+    assert llm.summarize_article(conn, db.get_article(conn, aid), _fake_client(s)) == "ok"
+    a = db.get_article(conn, aid)
+    assert a["ko_summary"].split("\n") == ["Al-Zaidi 총리, 밀수 연루 의혹 조사 지시", "KH 측, 승인 없는 진입 시 발포 위협"]
+    conn.execute("UPDATE articles SET selected=1")
+    text = draft.build_report(pipeline.list_articles(conn, "2026-11-10", "2026-11-10", selected_only=True), "2026-11-10", "2026-11-10")
+    assert "  * Al-Zaidi 총리, 밀수 연루 의혹 조사 지시\n  * KH 측, 승인 없는 진입 시 발포 위협" in text and "[치안]" in text
+
+
+def test_user_corrections_become_examples_for_later_summaries(conn):
+    aid, _ = db.upsert_article(conn, make_article(title="Iraq PM orders probe"))
+    conn.execute("UPDATE articles SET ko_title='이라크 총리가 조사를 명령했다', ko_summary='', summary_status='ok' WHERE id=?", (aid,))
+    assert llm.style_examples(conn) == ""
+    llm.record_style_edit(conn, db.get_article(conn, aid), "Al-Zaidi 총리, 조사 지시", "")
+    llm.record_style_edit(conn, db.get_article(conn, aid), "이라크 총리가 조사를 명령했다", "")     # 바뀐 것이 없으면 남기지 않는다
+    text = llm.style_examples(conn)
+    assert "원문 제목: Iraq PM orders probe" in text and "고치기 전: 이라크 총리가 조사를 명령했다" in text
+    assert "고친 후: Al-Zaidi 총리, 조사 지시" in text and text.count("원문 제목:") == 1
+    blocks = llm.system_blocks(text)
+    assert "cache_control" in blocks[0] and blocks[1]["text"] == text
+
+
+def test_usage_is_recorded_and_daily_budget_stops_automatic_runs(conn, monkeypatch):
+    from app import enrich
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "placeholder")
+    monkeypatch.setenv("DAILY_BUDGET_USD", "0.001")
+    _many(conn, 12, "Iraq attack")
+    pipeline.recompute(conn)
+    fake = FakeLLM()
+    llm.summarize_batch(conn, db.all_articles(conn)[:10], fake)      # 호출 1회: 입력 1000 + 출력 200 토큰(Haiku 단가)
+    u = llm.usage_today(conn)
+    assert u["calls"] == 1 and abs(u["cost"] - (1000 * 0.10 + 200 * 0.50) / 1_000_000) < 1e-12
+    assert not llm.budget_exceeded(conn)
+    for _ in range(6):
+        llm.record_usage(conn, {"model": "claude-haiku-5-5", "purpose": "summary", "input": 1000, "output": 200,
+                                "cache_read": 0, "cache_write": 0})
+    assert llm.budget_exceeded(conn)
+    monkeypatch.setattr(llm, "_client", lambda: fake)
+    before = fake.summary_calls
+    total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False)          # 자동 실행: 한도 초과로 멈춘다
+    assert total["over_budget"] and fake.summary_calls == before and "한도" in enrich.message(total)
+    total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, ignore_budget=True)   # 직접 누른 경우
+    assert total["ok"] == 2
+    assert llm.estimate_cost({"model": "unknown", "input": 1, "output": 1, "cache_read": 0, "cache_write": 0}, {}) is None
+
+
+def test_korean_articles_can_be_left_as_they_are(conn, monkeypatch):
+    aid, _ = db.upsert_article(conn, make_article("https://example.com/ko", "이라크 내각 예산안 의결", lang="ko"))
+    a = db.get_article(conn, aid)
+    assert llm.needs_summary(a)                              # 기본: 한국어 기사도 문체 규칙대로 다시 쓴다
+    monkeypatch.setenv("SUMMARIZE_KOREAN", "0")
+    assert not llm.needs_summary(a)

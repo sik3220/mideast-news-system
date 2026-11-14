@@ -37,12 +37,13 @@
   {% if a.summary_status == 'ok' %}<p class="hint">근거: {{ a.summary_basis }}</p>{% endif %}
   <form method="post" action="/article/{{ a.id }}/edit">
     <input type="hidden" name="back_qs" value="{{ back_qs }}">
-    <label>한국어 제목<input type="text" name="ko_title" value="{{ a.ko_title or '' }}"></label>
-    <label style="margin-top:8px">한국어 요약<textarea name="ko_summary" rows="3">{{ a.ko_summary or '' }}</textarea></label>
+    <label>제목 줄 (주체, 핵심행위 — 날짜·출처 없이)<input type="text" name="ko_title" value="{{ a.ko_title or '' }}"></label>
+    <label style="margin-top:8px">하위 항목 (한 줄에 하나, 없으면 비움)<textarea name="ko_summary" rows="3">{{ a.ko_summary or '' }}</textarea></label>
     <div class="row" style="margin-top:8px">
       <label>분류<select name="category">{% for c in categories %}<option {{ 'selected' if a.category == c }}>{{ c }}</option>{% endfor %}</select></label>
       <label style="flex:1">메모<input type="text" name="note" value="{{ a.note }}"></label>
       <button type="submit">직접 수정 저장</button>
+      <span class="meta">고친 문장은 다음 요약의 예시로 쓰입니다</span>
     </div>
   </form>
   <form method="post" action="/article/{{ a.id }}/summarize" style="margin-top:10px" data-busy>

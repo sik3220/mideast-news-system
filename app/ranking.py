@@ -61,8 +61,11 @@ def classify(a: dict, cfg: dict) -> tuple[str, str]:
 
 
 def match_themes(a: dict, cfg: dict) -> list[dict]:
-    """제목이 걸리는 관심 사안 목록. needs_iraq 인 사안은 기사에 이라크 문맥이 있어야 한다."""
-    title, rest = _texts(a)
+    """제목이 걸리는 관심 사안 목록. needs_iraq 인 사안은 기사에 이라크 문맥이 있어야 한다.
+
+    원문 제목만 본다(한국어 요약은 보지 않는다). 요약 전후로 추천 구성이 바뀌지 않게 하기 위해서다.
+    """
+    title, rest = a.get("title") or "", a.get("snippet") or ""
     has_iraq = find_term(cfg["iraq_context"], title + " " + rest) is not None
     return [t for t in cfg.get("themes") or []
             if (has_iraq or not t.get("needs_iraq")) and find_term(t["words"], title)]
@@ -82,7 +85,7 @@ def is_blocked_source(a: dict, cfg: dict) -> bool:
     return any(str(s).lower() in text for s in cfg.get("blocked_sources") or [])
 
 
-SECTION_BY_CATEGORY = {"정치": "정치", "치안": "치안 · 테러", "테러": "치안 · 테러", "경제": "경제", "국제": "국제"}
+SECTIONS = ("정치", "치안", "테러", "경제", "유가", "국제")
 FOCUS = "관심 주제"
 
 
@@ -92,13 +95,26 @@ def direct_topics(a: dict, cfg: dict) -> list[str]:
 
 
 def section_of(a: dict, cfg: dict) -> str:
-    """보고서 구역. 관심 주제 직접 보도 → 관심 사안이 정한 구역 → 분류 순으로 정한다."""
+    """추천을 고를 때의 구역. 규칙으로만 정한다: 관심 주제 직접 보도 → 관심 사안이 정한 구역 → 규칙 분류.
+
+    Claude 가 붙인 태그는 쓰지 않는다. 요약할 때마다 추천 구성이 흔들려 다시 요약하는 일을 막기 위해서다.
+    """
     if direct_topics(a, cfg):
         return FOCUS
     for t in match_themes(a, cfg):
         if t.get("section"):
             return t["section"]
-    return SECTION_BY_CATEGORY.get(a.get("category") or "", "기타")
+    category = a.get("rule_category") or a.get("category") or ""
+    return category if category in SECTIONS else "기타"
+
+
+def display_section(a: dict, cfg: dict) -> str:
+    """화면에 보일 구역. 요약이 있으면 Claude 가 문체 규칙에 따라 붙인 태그를 따른다."""
+    if direct_topics(a, cfg):
+        return FOCUS
+    if a.get("summary_status") == "ok" and a.get("category") in SECTIONS:
+        return a["category"]
+    return section_of(a, cfg)
 
 
 def score_article(a: dict, n_sources: int = 1, cfg: dict | None = None, now=None) -> dict:
@@ -108,9 +124,11 @@ def score_article(a: dict, n_sources: int = 1, cfg: dict | None = None, now=None
     title, rest = _texts(a)
     full = title + " " + rest
     topics = [t for t in cfg["topics"] if match_topic(t, a, cfg)]
-    category, region = classify(a, cfg)
-    if a.get("summary_status") == "ok" and a.get("llm_category"):
-        category = a["llm_category"]
+    rule_category, region = classify(a, cfg)
+    if match_topic("bismayah", a, cfg) == "title":
+        rule_category = "정치"                              # 문체 규칙 8절: 비스마야는 [정치]
+    # 점수는 규칙 분류로 계산한다. 화면에 보일 분류는 요약이 있으면 Claude 태그를 쓴다.
+    category = rule_category
 
     base, reasons = 0, []
     bis = match_topic("bismayah", a, cfg)
@@ -171,7 +189,9 @@ def score_article(a: dict, n_sources: int = 1, cfg: dict | None = None, now=None
         if 0 <= age.total_seconds() <= 86400:
             score += w["fresh"]
             reasons.append("최근 24시간 내 발표")
-    return {"topics": topics, "category": category, "region": region, "score": score, "reasons": reasons}
+    shown = a["llm_category"] if a.get("summary_status") == "ok" and a.get("llm_category") else rule_category
+    return {"topics": topics, "category": shown, "rule_category": rule_category, "region": region,
+            "score": score, "reasons": reasons}
 
 
 def sort_key(a: dict):

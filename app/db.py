@@ -72,6 +72,16 @@ CREATE TABLE IF NOT EXISTS generated_files (
 CREATE TABLE IF NOT EXISTS event_splits (   -- 사용자가 "같은 사건 아님"으로 떼어 놓은 기사 쌍 (a < b)
   a INTEGER NOT NULL, b INTEGER NOT NULL, PRIMARY KEY (a, b)
 );
+CREATE TABLE IF NOT EXISTS llm_usage (       -- Claude 호출 한 번의 실제 토큰 수
+  id INTEGER PRIMARY KEY, at TEXT NOT NULL, day TEXT NOT NULL, model TEXT NOT NULL, purpose TEXT NOT NULL,
+  input INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0,
+  cache_read INTEGER NOT NULL DEFAULT 0, cache_write INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS style_edits (     -- 사용자가 요약을 고친 기록(다음 요약의 예시로 쓴다)
+  id INTEGER PRIMARY KEY, at TEXT NOT NULL, article_id INTEGER, source_title TEXT NOT NULL,
+  before_title TEXT NOT NULL, before_subs TEXT NOT NULL DEFAULT '', after_title TEXT NOT NULL,
+  after_subs TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS locations (
   name TEXT PRIMARY KEY, x REAL NOT NULL, y REAL NOT NULL, updated_at TEXT NOT NULL
 );
@@ -89,6 +99,8 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     columns = {r["name"] for r in conn.execute("PRAGMA table_info(articles)")}
     if "group_note" not in columns:
         conn.execute("ALTER TABLE articles ADD COLUMN group_note TEXT")
+    if "rule_category" not in columns:
+        conn.execute("ALTER TABLE articles ADD COLUMN rule_category TEXT")
     if "summary_ver" not in columns:
         conn.execute("ALTER TABLE articles ADD COLUMN summary_ver INTEGER NOT NULL DEFAULT 0")
     return conn

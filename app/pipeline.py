@@ -91,8 +91,8 @@ def recompute(conn, demo: bool = False) -> None:
         n = dedupe.independent_sources(groups[a["event_id"]])
         a["llm_category"] = a["category"] if a["summary_status"] == "ok" else None
         s = ranking.score_article(a, n)
-        conn.execute("UPDATE articles SET event_id=?, topics=?, category=?, region=?, score=?, reasons=? WHERE id=?",
-                     (a["event_id"], json.dumps(s["topics"]), s["category"], s["region"], s["score"],
+        conn.execute("UPDATE articles SET event_id=?, topics=?, category=?, rule_category=?, region=?, score=?, reasons=? WHERE id=?",
+                     (a["event_id"], json.dumps(s["topics"]), s["category"], s["rule_category"], s["region"], s["score"],
                       json.dumps(s["reasons"], ensure_ascii=False), a["id"]))
 
 
@@ -272,13 +272,13 @@ def split_article(conn, article_id: int) -> None:
         conn.execute("INSERT OR IGNORE INTO event_splits (a, b) VALUES (?,?)", (min(o, article_id), max(o, article_id)))
 
 
-SECTION_ORDER = [ranking.FOCUS, "정치", "치안 · 테러", "경제", "국제", "기타"]
+SECTION_ORDER = [ranking.FOCUS, "정치", "치안", "테러", "경제", "유가", "국제", "기타"]
 
 
 def sections(events: list[dict], cfg: dict | None = None) -> list[tuple[str, list[dict]]]:
-    """보고서처럼 구역별로 나눈다. 구역 판정은 추천 선별과 같은 규칙(ranking.section_of)을 쓴다."""
+    """보고서처럼 구역별로 나눈다. 요약이 있으면 문체 규칙의 태그(정치·치안·테러·경제·국제·유가)를 따른다."""
     cfg = cfg or topics_config()
     by: dict[str, list[dict]] = defaultdict(list)
     for a in events:
-        by[ranking.section_of(a, cfg)].append(a)
+        by[ranking.display_section(a, cfg)].append(a)
     return [(name, by[name]) for name in SECTION_ORDER if by[name]]

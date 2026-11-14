@@ -64,6 +64,7 @@ iraq_context: [이라크, iraq, iraqi, العراق, العراقي, baghdad, �
 
 # 분류 키워드. 위에서부터 먼저 일치한 분류를 쓴다. LLM 요약이 있으면 그 분류가 우선한다.
 categories:
+  유가: [brent, wti, 두바이유, 브렌트유, 국제유가, "oil prices", "oil price", "crude prices", "أسعار النفط", برنت]
   테러: [테러, 폭탄, 자폭, ied, 급조폭발물, "suicide bomb", bombing, terror, isis, "islamic state", daesh, 암살, assassinat, إرهاب, داعش, انفجار, عبوة, اغتيال]
   치안: [치안, 공격, 드론, 로켓, 무장단체, 민병대, 시위, 총격, 공습, 납치, attack, drone, rocket, militia, protests, protesters, demonstrat, clash, airstrike, kidnap, "security forces", هجوم, مسيرة, فصائل, تظاهرات, أمن, قصف]
   경제: [경제, 신도시, 사업, 수주, 회수, 예산, 유가, 원유, 석유, 가스, 투자, 계약, 미수금, 지급, 환율, 수출, 건설, budget, oil, crude, gas, investment, contract, payment, economy, dinar, export, opec, اقتصاد, موازنة, نفط, استثمار, عقد]
@@ -95,17 +96,17 @@ wire_names: [연합뉴스, 뉴시스, 뉴스1, reuters, afp, "associated press",
 #   cap        한 구역 안에서 이 사안으로 뽑을 최대 건수(없으면 bonus 형은 recommend.theme_cap, floor 형은 제한 없음)
 themes:
   # 위에 있을수록 구역을 정할 때 먼저 본다(이라크 사안이 역내 사안보다 앞).
-  - {id: is_ops, label: IS 관련 작전·사건, needs_iraq: true, bonus: 22, section: "치안 · 테러",
+  - {id: is_ops, label: IS 관련 작전·사건, needs_iraq: true, bonus: 22, section: 테러,
      words: [isis, isil, daesh, "islamic state", 은신처, hideout, داعش, مضافة, الدواعش]}
-  - {id: energy_infra, label: 에너지 시설·전력, needs_iraq: true, bonus: 15, section: "치안 · 테러",
+  - {id: energy_infra, label: 에너지 시설·전력, needs_iraq: true, bonus: 15, section: 치안,
      words: ["khor mor", "khormor", kormor, "gas field", 가스전, "power outage", "power loss", كورمور, خورمور, "خور مور", "حقل غاز"]}
   - {id: arms_control, label: 무장단체 무기통제, needs_iraq: true, bonus: 18, section: 정치,
      words: [disarm, 무기통제, "무기 통제", "rogue arms", "weapons row", "arms control", "حصر السلاح", "نزع السلاح"]}
   - {id: militia, label: 무장단체 동향, needs_iraq: true, bonus: 15,
      words: [무장단체, 민병대, "kataib", "kata'ib", hezbollah, pmf, "popular mobilization", militia, militias, "coordination framework", 시아조정기구, الفصائل, "الحشد الشعبي", "الإطار التنسيقي", "كتائب حزب الله"]}
-  - {id: iraq_attack, label: 이라크 내 공격·요격, needs_iraq: true, bonus: 15, section: "치안 · 테러",
+  - {id: iraq_attack, label: 이라크 내 공격·요격, needs_iraq: true, bonus: 15, section: 치안,
      words: ["green zone", 그린존, "المنطقة الخضراء", embassy, 대사관, السفارة, "drone attack", "rocket attack", intercept, 요격, 로켓, "طائرة مسيرة", مسيّرة, صاروخ, اعتراض, "roadside bomb", ied, عبوة, assassinat, 암살, اغتيال, kidnap, 납치]}
-  - {id: iraq_protest, label: 시위·소요, needs_iraq: true, bonus: 10, section: "치안 · 테러",
+  - {id: iraq_protest, label: 시위·소요, needs_iraq: true, bonus: 10, section: 치안,
      words: [tahrir, 시위, protests, protesters, demonstrat, "civil disobedience", تظاهرات, احتجاج, "ساحة التحرير", العصيان]}
   - {id: security_ops, label: 보안당국 발표, needs_iraq: true, bonus: 8,
      words: [수색작전, 대테러, "counter-terrorism", "counterterrorism", "خلية الإعلام الأمني", "مكافحة الإرهاب"]}
@@ -121,7 +122,7 @@ themes:
      words: ["central bank", cbi, 중앙은행, "البنك المركزي", reserves, 외환보유, dinar, 디나르, الدينار, "dollar", 달러, الدولار, salaries, 급여, رواتب, budget, 예산, موازنة, 미수금]}
   - {id: korea_iraq, label: 한국–이라크, needs_iraq: true, bonus: 15,
      words: [천궁, cheongung, "m-sam", 대우건설, 현대건설, "한국 기업", "south korea", korean, 한국에, الكورية]}
-  - {id: oil_price, label: 국제유가, needs_iraq: false, floor: 40, section: 경제,
+  - {id: oil_price, label: 국제유가, needs_iraq: false, floor: 40, section: 유가,
      words: [brent, wti, 두바이유, 브렌트유, 국제유가, "oil prices", "oil price", "crude prices", "أسعار النفط", برنت]}
   - {id: korea_region, label: 한국 관련 역내 사안, needs_iraq: false, floor: 52, cap: 1, section: 국제,
      words: [청해부대, 파병, "한국 선박", "한국인", "korean vessel", "south korean navy"]}
@@ -144,8 +145,15 @@ recommend:
   must_topics: [bismayah, cabinet]            # 제목에서 직접 다룬 기사는 '관심 주제' 구역에 넣는다
   must_cap: {cabinet: 2}                      # 주제별 최대 건수(없으면 전부). 비스마야·한화·NIC 는 제한 없음
   # 구역별 정원. 실제 보고서의 분량 비율을 따랐다. 정원은 limit 을 넘더라도 채운다(그래서 '20건 안팎').
-  quota: {정치: 6, "치안 · 테러": 4, 경제: 3, 국제: 4}
+  quota: {정치: 5, 치안: 3, 테러: 2, 경제: 3, 유가: 1, 국제: 4}
   theme_cap: 2                                # 한 구역 안에서 같은 관심 사안은 최대 2건(한 사안이 구역을 독차지하지 않게). floor 형 사안은 제외
+
+# Claude 모델별 단가(100만 토큰당 [입력, 출력] 달러). 화면의 "오늘 사용 추정 금액" 계산에만 쓴다.
+# 실제 청구액은 Anthropic 콘솔에서 확인한다. 단가가 바뀌면 여기를 고친다.
+llm_prices:
+  claude-haiku-5-5: [0.10, 0.50]
+  claude-sonnet-5-5: [2.00, 10.00]
+  claude-opus-5-5: [4.00, 20.00]
 
 weights:
   bismayah_title: 50      # 1순위: 비스마야·한화·NIC 가 제목에서 직접 다뤄짐

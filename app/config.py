@@ -52,7 +52,39 @@ def auto_summarize() -> bool:
 
 
 def llm_model() -> str:
-    return os.environ.get("LLM_MODEL") or "claude-opus-5-5"
+    """번역·요약 모델. 제목을 보고서 문체로 옮기는 단순 작업이라 값싼 모델을 기본으로 한다."""
+    return os.environ.get("LLM_MODEL") or "claude-haiku-5-5"
+
+
+def llm_group_model() -> str:
+    """같은 사건 묶기 모델. 판단이 필요하고 수집당 한두 번뿐이라 한 단계 위 모델을 쓴다."""
+    return os.environ.get("LLM_GROUP_MODEL") or "claude-sonnet-5-5"
+
+
+def summarize_korean() -> bool:
+    """한국어 기사도 문체 규칙대로 다시 쓸지. .env 에 SUMMARIZE_KOREAN=0 이면 원래 제목 그대로 둔다."""
+    return os.environ.get("SUMMARIZE_KOREAN", "1").strip().lower() not in ("0", "false", "no")
+
+
+def daily_budget() -> float:
+    """하루 Claude 사용 추정 금액 한도(달러). 넘으면 자동 요약·묶기를 멈춘다. 0 이면 한도 없음."""
+    try:
+        return float(os.environ.get("DAILY_BUDGET_USD") or 0.5)
+    except ValueError:
+        return 0.5
+
+
+STYLE_GUIDE = ROOT / "config" / "style_guide.md"
+_style_cache: tuple[float, str] | None = None
+
+
+def style_guide_text() -> str:
+    """문체 규칙 전문. 파일을 고치면 다음 요약부터 반영된다."""
+    global _style_cache
+    mtime = STYLE_GUIDE.stat().st_mtime
+    if _style_cache is None or _style_cache[0] != mtime:
+        _style_cache = (mtime, STYLE_GUIDE.read_text(encoding="utf-8"))
+    return _style_cache[1]
 
 
 def soffice_path() -> str | None:

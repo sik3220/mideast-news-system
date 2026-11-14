@@ -9,7 +9,7 @@ from datetime import date
 
 from .timeutil import iso, md, now_utc
 
-CATEGORY_ORDER = ["정치", "치안", "테러", "경제", "국제", "기타"]
+CATEGORY_ORDER = ["정치", "치안", "테러", "경제", "국제", "유가", "기타"]
 NOT_FOUND = "선택 기간·성공적으로 검색한 출처에서 신규 주요 자료를 찾지 못함"
 
 
@@ -38,7 +38,7 @@ def item_lines(a: dict) -> list[str]:
     source = a.get("source_name") or a.get("source_domain") or "출처 미상"
     lines = [f"- {day}, {head} ({source}, {_published(a)})"]
     if a.get("ko_summary"):
-        lines.append(f"  * {a['ko_summary']}")
+        lines += [f"  * {x}" for x in a["ko_summary"].split("\n") if x.strip()]
     elif not a.get("ko_title"):
         lines.append("  * (한국어 요약 없음 — 원문 제목 그대로)")
     notes = unverified_notes(a)

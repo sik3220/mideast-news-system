@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from datetime import date, timedelta
 from pathlib import Path
@@ -26,7 +27,7 @@ templates.env.filters["md"] = lambda d: timeutil.md(d) if d else "날짜 미상"
 templates.env.filters["local"] = lambda s: (timeutil.parse_iso(s).astimezone(timeutil.BAGHDAD).strftime("%m.%d %H:%M")
                                             if s else "없음")
 LANG_NAMES = {"ko": "한국어", "en": "영어", "ar": "아랍어"}
-CATEGORIES = ["정치", "치안", "테러", "경제", "국제", "기타"]
+CATEGORIES = ["정치", "치안", "테러", "경제", "국제", "유가", "기타"]
 
 
 def render(request: Request, name: str, **ctx):
@@ -81,12 +82,17 @@ def index(request: Request):
         total = conn.execute("SELECT COUNT(*) c FROM articles WHERE is_demo=?", (int(config.demo_mode()),)).fetchone()["c"]
         selected_count = conn.execute("SELECT COUNT(*) c FROM articles WHERE selected=1 AND is_demo=?",
                                       (int(config.demo_mode()),)).fetchone()["c"]
+        usage = llm.usage_today(conn)
+        over_budget = llm.budget_exceeded(conn)
     unsummarized = sum(llm.needs_summary(a) for a in articles)
     stale = sum(a["summary_status"] == "ok" and llm.needs_summary(a) for a in articles)
     return render(request, "index.html", d_from=d_from, d_to=d_to, f=filters, articles=articles, run=run,
                   sections=pipeline.sections(articles), stale=stale,
+                  usage=usage, over_budget=over_budget, budget=config.daily_budget(),
+                  # 자동 실행은 첫 화면 추천과 관심 주제 탭에서만. 필터·검색·전체 보기는 버튼으로만 요약한다.
                   auto=bool(unsummarized) and config.llm_configured() and config.auto_summarize()
-                  and q.get("noauto") != "1" and not show_all,   # 전체 보기는 수백 건이라 자동으로 돌리지 않는다
+                  and q.get("noauto") != "1" and not show_all and not over_budget
+                  and not any(filters[k] for k in ("q", "category", "region", "selected")),
                   total=total, selected_count=selected_count, unsummarized=unsummarized,
                   msg=q.get("msg", ""), batch=llm.MAX_PER_BATCH, matched=matched, trimmed=trimmed,
                   show_all=show_all, narrowed=any(filters[k] for k in pipeline.NARROWING),
@@ -117,7 +123,7 @@ async def summarize(request: Request):
     with db.session() as conn:
         # 화면에 보이는 목록만 처리한다(추천 보기에서는 추천분만).
         total = enrich.enrich_view(conn, params["from"], params["to"], params, params["all"] == "1",
-                                   config.demo_mode())
+                                   config.demo_mode(), ignore_budget=True)    # 직접 누른 것은 한도와 무관하게 실행
     return back("/", **params, msg=enrich.message(total))
 
 
@@ -217,14 +223,19 @@ def article_summarize(article_id: int, back_qs: str = Form("")):
 def article_edit(article_id: int, ko_title: str = Form(""), ko_summary: str = Form(""), category: str = Form(""),
                  note: str = Form(""), back_qs: str = Form("")):
     """사용자가 한국어 제목·요약·분류·메모를 직접 고친다."""
+    subs = "\n".join(re.sub(r"^[*·\\-☞\\s]+", "", ln).strip() for ln in ko_summary.replace("\r\n", "\n").split("\n")
+                     if ln.strip())
     with db.session() as conn:
+        before = db.get_article(conn, article_id)
+        if not before:
+            raise HTTPException(404)
+        llm.record_style_edit(conn, before, ko_title.strip(), subs)      # 고친 문장은 다음 요약의 예시가 된다
         conn.execute("UPDATE articles SET ko_title=?, ko_summary=?, note=? WHERE id=?",
-                     (ko_title.strip() or None, ko_summary.strip() or None, note.strip(), article_id))
+                     (ko_title.strip() or None, subs or None, note.strip(), article_id))
         if ko_title.strip():
             # 사용자가 직접 쓴 한국어 제목은 요약이 있는 것으로 취급한다(재요약으로 덮어쓰지 않게).
-            conn.execute("UPDATE articles SET summary_status='ok', summary_basis=COALESCE(summary_basis,'사용자 작성') "
-                         "WHERE id=? AND summary_status<>'ok'", (article_id,))
-            conn.execute("UPDATE articles SET summary_ver=999 WHERE id=?", (article_id,))   # 다시 요약해 덮어쓰지 않게
+            conn.execute("UPDATE articles SET summary_status='ok', summary_basis=COALESCE(summary_basis,'사용자 작성'), "
+                         "summary_ver=? WHERE id=?", (llm.USER_WRITTEN, article_id))
         if category in CATEGORIES:
             conn.execute("UPDATE articles SET category=? WHERE id=? AND summary_status='ok'", (category, article_id))
         pipeline.recompute(conn, config.demo_mode())
@@ -338,7 +349,7 @@ def _article_item(a: dict, with_source: bool) -> dict:
     head = f"{day}, {a.get('ko_title') or a['title']}"
     if with_source:
         head += f" ({a.get('source_name') or a.get('source_domain')}, {day})"
-    return {"head": head, "subs": [f"* {a['ko_summary']}"] if a.get("ko_summary") else []}
+    return {"head": head, "subs": [f"* {x}" for x in (a.get("ko_summary") or "").split("\n") if x.strip()]}
 
 
 # ───────────────────────── 일일 PPT ─────────────────────────
@@ -401,6 +412,8 @@ async def daily_save(request: Request):
         if action == "import":
             pol, eco = [], []
             for a in _selected(conn, day, day):
+                if a["category"] == "유가":
+                    continue                      # 문체 규칙 8절: [유가]는 일일 PPT에서 제외
                 (pol if a["category"] in ("정치", "치안", "테러") else eco).append(_article_item(a, with_source=True))
             if not pol and not eco:
                 msg = "이 날짜에 선택한 기사가 없습니다."
@@ -506,10 +519,12 @@ async def weekly_save(request: Request):
     msg = "저장했습니다."
     with db.session() as conn:
         if action == "import":
-            buckets = {"politics": [], "terror": [], "intl": []}
+            buckets = {"politics": [], "terror": [], "intl": [], "oil": []}
             for a in _selected(conn, data["period_start"], data["period_end"]):
                 item = _article_item(a, with_source=False)
-                if a["region"] != "이라크" or a["category"] == "국제":
+                if a["category"] == "유가":
+                    buckets["oil"].append(item)       # 문체 규칙 8절: [유가]는 주간 Word 경제 분야에만
+                elif a["region"] != "이라크" or a["category"] == "국제":
                     buckets["intl"].append(item)
                 elif a["category"] in ("치안", "테러"):
                     buckets["terror"].append(item)
@@ -519,7 +534,7 @@ async def weekly_save(request: Request):
             if not n:
                 msg = "이 기간에 선택한 기사가 없습니다."
             else:
-                for k in ("politics", "terror"):
+                for k in ("politics", "terror", "oil"):
                     data[k] = "\n\n".join(filter(None, [data[k].strip(), items_to_text(buckets[k])]))
                 g = data["intl"][0]
                 g["body"] = "\n\n".join(filter(None, [g["body"].strip(), items_to_text(buckets["intl"])]))

@@ -8,7 +8,7 @@
   <div class="body">
     <h3><a href="/article/{{ a.id }}?back={{ qs|urlencode }}" dir="auto">{{ a.published_date|md }}, {{ a.ko_title or a.title }}</a>
       <span class="src">({{ a.source_name or a.source_domain or '출처 미상' }}, {{ a.published_date|md }})</span></h3>
-    {% if a.ko_summary %}<p class="sub">* {{ a.ko_summary }}</p>{% endif %}
+    {% for line in (a.ko_summary or '').split('\n') if line.strip() %}<p class="sub">* {{ line }}</p>{% endfor %}
     {% for f in a.summary_flags %}<p class="sub flag">☞ {{ f }}</p>{% endfor %}
     {% if a.summary_status == 'failed' %}<p class="sub flag">☞ 번역 실패 — 원문 제목 그대로입니다</p>{% endif %}
     <p class="foot">
@@ -40,6 +40,7 @@
     <button class="primary" type="submit" {{ 'disabled' if demo }}>새 기사 수집</button>
     <span class="spinner" role="status">수집·번역 중입니다… 1분쯤 걸립니다.</span>
     <span class="status grow">
+      {% if llm_ready and usage.calls %}<span class="meta" title="config/topics.yaml 의 단가로 계산한 추정치입니다. 실제 청구액은 Anthropic 콘솔에서 확인하세요.">오늘 Claude 호출 {{ usage.calls }}회 · 약 ${{ '%.3f'|format(usage.cost) }}{% if budget %} / 한도 ${{ '%.2f'|format(budget) }}{% endif %} (추정)</span> · {% endif %}
       {% if demo %}데모 모드
       {% elif not run %}기간을 정하고 수집을 누르세요
       {% else %}
@@ -96,7 +97,7 @@
       <input type="hidden" name="from" value="{{ d_from }}"><input type="hidden" name="to" value="{{ d_to }}">
       {% for k in ['q','category','region','topic','selected'] %}<input type="hidden" name="{{ k }}" value="{{ f[k] }}">{% endfor %}
       <input type="hidden" name="all" value="{{ '1' if show_all else '' }}">
-      <button type="submit" {{ 'disabled' if not llm_ready }}>{{ '보이는 기사 번역' if show_all else '번역 다시 시도' }} {{ unsummarized }}건</button>
+      <button type="submit" {{ 'disabled' if not llm_ready }}>보이는 기사 요약 {{ unsummarized }}건</button>
       <span class="spinner" role="status">번역 중…</span>
     </form>
     {% endif %}
@@ -104,8 +105,9 @@
   </span>
 </div>
 
+{% if over_budget and unsummarized %}<div class="warnbox">오늘 Claude 사용 추정액이 한도(${{ '%.2f'|format(budget) }})에 도달해 자동 요약을 멈췄습니다. 필요하면 "보이는 기사 요약" 버튼으로 직접 실행하거나 .env 의 DAILY_BUDGET_USD 를 올리세요.</div>{% endif %}
 {% if auto %}<div class="working" id="auto" role="status" data-payload='{{ {"from": d_from, "to": d_to, "all": show_all, "q": f.q, "category": f.category, "region": f.region, "topic": f.topic, "selected": f.selected}|tojson }}'>
-  <span class="dot"></span> 기사 {{ unsummarized }}건을 한국어 보고서 문체로 정리하고 있습니다. 끝나면 화면이 자동으로 바뀝니다.</div>{% endif %}
+  <span class="dot"></span> 기사 {{ unsummarized }}건을 보고서 문체로 정리하고 있습니다. 끝나면 화면이 자동으로 바뀝니다.</div>{% endif %}
 {% if sections %}
   <nav class="secnav" id="secnav" aria-label="구역 선택">
     <button type="button" data-sec="" aria-pressed="true">전체 <span>{{ articles|length }}</span></button>
