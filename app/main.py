@@ -635,7 +635,7 @@ def weekly_page(request: Request):
         pass
     return render(request, "weekly.html", start=start, data=data, saved=stored is not None, history=history,
                   materials=mats, sections=weekly.SECTIONS, security=weekly.security_list(mats), origin_labels=weekly.ORIGIN_LABELS,
-                  weekly_model=config.llm_weekly_model(), pending=sum(1 for m in mats if m.get("needs")), errors=errors, warnings=warnings, total=total,
+                  weekly_model=config.llm_weekly_model(), research_max=config.research_daily_max(), pending=sum(1 for m in mats if m.get("needs")), errors=errors, warnings=warnings, total=total,
                   stat_fields=weekly_word.STAT_FIELDS, oil_fields=weekly_word.OIL_FIELDS,
                   template_ok=config.WEEKLY_TEMPLATE.exists(), msg=request.query_params.get("msg", ""),
                   version=config.WEEKLY_TEMPLATE_VERSION)

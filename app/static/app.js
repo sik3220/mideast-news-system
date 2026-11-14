@@ -19,7 +19,8 @@ async function research(id, note) {
   try { d = await (await fetch(`/api/article/${id}/research`, {method: 'POST'})).json(); }
   catch { d = {status: 'failed'}; }
   note.className = 'rs';
-  note.textContent = d.status === 'ok' ? d.basis : d.status === 'limit' ? d.message : (RESEARCH_MSG[d.status] || '');
+  note.textContent = d.status === 'ok' ? '' : d.status === 'limit' ? d.message : (RESEARCH_MSG[d.status] || '');
+  if (d.status === 'ok') note.title = d.basis;
   return d;
 }
 function noteIn(parent) {
@@ -34,6 +35,8 @@ async function fillDetails(id, item, box) {
   if (d.status !== 'ok') return;
   const h3 = item.querySelector('h3');
   item.querySelector('[data-title]').textContent = `${item.dataset.md}, ${d.title}`;
+  const done = document.createElement('span'); done.className = 'tag d-full'; done.textContent = '본문 읽음'; done.title = d.basis;
+  item.querySelector('.foot').prepend(done);
   item.querySelectorAll('.body > .sub, .body > .flag').forEach(el => el.remove());
   const lines = [...d.subs.map(s => ['sub', s.startsWith('☞') ? s : '* ' + s]), ...d.flags.map(f => ['flag', f])];
   let after = h3;
@@ -51,7 +54,9 @@ document.addEventListener('change', async (e) => {
   box.removeAttribute('data-research');
   const d = await research(id, noteIn(label.querySelector('span')));
   if (d.status !== 'ok') return;
-  label.querySelector('[data-head]').textContent = `${label.dataset.md}, ${d.title} (${label.dataset.src})`;
+  label.querySelector('[data-head]').textContent = d.title;
+  const tag = label.querySelector('[data-depth]');
+  if (tag) { tag.textContent = '본문 읽음'; tag.className = 'tag d-full'; tag.title = d.basis; }
   label.querySelectorAll('.msub').forEach(el => el.remove());
   for (const s of d.subs) {
     const el = document.createElement('span'); el.className = 'msub'; el.textContent = s.startsWith('☞') ? s : '* ' + s;

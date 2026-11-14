@@ -15,7 +15,7 @@
     <div class="foot">
       {% for t in a.topics if t != 'korea_media' %}<span class="tag">{{ topics[t] }}</span>{% endfor %}
       {% if a.social %}<span class="tag warn">SNS 글 · 여론 참고용</span>{% endif %}
-      {% if (a.summary_basis or '').startswith(('본문 기반', '웹 검색 기반')) %}<span class="tag plain">{{ a.summary_basis }}</span>{% endif %}
+      {% if (a.summary_basis or '').startswith(('본문 기반', '웹 검색 기반')) %}<span class="tag d-full" title="{{ a.summary_basis }}">본문 읽음</span>{% endif %}
       {% if a.n_sources >= 2 %}<span>매체 {{ a.n_sources }}곳</span>{% endif %}
       {% if a.url.startswith('http') %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문 열기</a>{% else %}<span>직접 추가</span>{% endif %}
       {% if a.related %}

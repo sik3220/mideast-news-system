@@ -36,6 +36,12 @@ def test_materials_collect_daily_items_selected_and_recommended(conn):
     assert all(m["on"] for m in mats if m["origin"] != "recommended")      # 일일·선택은 기본 포함
     assert not by_origin["recommended"][0]["on"]                              # 추천만은 기본 제외
     assert [m["n"] for m in mats] == list(range(1, len(mats) + 1))
+    # 표시: 세부 내용이 있는지(일일 문장 = 있음, 제목만 옮긴 기사 = 없음, 번역 전)와 날짜·출처를 뗀 문장
+    assert [(m["depth"], m["depth_label"]) for m in mats] == [("full", "일일 문장"), ("title", "제목만"), ("raw", "번역 전"),
+                                                              ("full", "일일 문장"), ("full", "일일 문장")]
+    assert mats[0]["text"] == "재무부 장관, 천궁-II 대금 지급 지시 (INA, 11.10)" and mats[1]["text"] == "이라크 의회, 선거법 개정안 표결"
+    assert "근거: 제목만 (세부 내용 없음)" in weekly.material_block(mats[1])
+    assert "근거: 본문을 읽고 쓴 문장" in weekly.material_block(mats[0])
     assert [m["head"] for m in weekly.security_list(mats)] == ["11.10, 08:49 Kirkuk州, IS 수색작전 실시"]
     # 사용자가 넣고 뺀 것이 기본값보다 우선한다
     choice = {by_origin["recommended"][0]["key"]: True, by_origin["daily"][0]["key"]: False}

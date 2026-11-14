@@ -27,8 +27,9 @@
 
 <section class="panel">
   <h2 class="sec">① 이번 주 재료 <span class="meta">— 체크한 것만 초안에 들어갑니다 (<span id="mat-count"></span>)</span></h2>
-  <p class="hint">일일 PPT에 실은 문장과 선택한 기사는 처음부터 체크되어 있고, ‘추천만’은 꺼져 있습니다.
-    보고서를 쓰는 순서(정치 → 치안·테러 → 유가 → 국제)대로 나뉘어 있고, 구역 안에서는 날짜순입니다. 일일에 빠졌지만 주간에 넣을 것은 체크하고, 일일에 실었지만 뺄 것은 체크를 푸세요. 목록에 없는 사안은 추천 기사 화면의 ‘직접 항목 추가’로 넣습니다.</p>
+  <p class="hint"><span class="tag d-full">본문 읽음</span><span class="tag d-full">일일 문장</span> 은 세부 내용이 있는 재료이고,
+    <span class="tag d-title">제목만</span> 은 기사 제목만 옮긴 것입니다. <b>제목만인 재료는 체크하면 Claude가 본문을 찾아 읽어 세부 내용을 채웁니다</b>{% if research_max %}(하루 {{ research_max }}건까지){% endif %}.
+    일일 문장과 직접 선택한 기사는 처음부터 체크되어 있고, 시스템이 추천만 한 기사는 꺼져 있습니다. 목록에 없는 사안은 추천 기사 화면의 ‘직접 항목 추가’로 넣습니다.</p>
   {% if pending and llm_ready %}<div class="working" id="mat-working" role="status" data-start="{{ start }}">
     <span class="dot"></span> 원문 제목 그대로인 재료 {{ pending }}건을 보고서 문체로 정리하고 있습니다. 끝나면 목록이 바뀝니다.</div>{% endif %}
   {% if materials %}
@@ -42,8 +43,8 @@
       <input type="checkbox" name="mat" value="{{ m.key }}" {{ 'checked' if m.on }}
              {% if research_on and m.researchable %}data-research="{{ m.article_id }}"{% endif %}>
       <input type="hidden" name="mat_all" value="{{ m.key }}">
-      <span><b class="mday">{{ m.day|md }}</b><span class="tag {{ m.origin }}">{{ m.label }}</span>{% if m.origin in ('selected', 'recommended') %}<span class="tag plain">{{ m.basis }}</span>{% endif %}
-        <span dir="auto" data-head>{{ m.head }}</span>
+      <span><b class="mday">{{ m.day|md }}</b><span class="tag d-{{ m.depth }}" title="{{ m.depth_note }}" data-depth>{{ m.depth_label }}</span>{% if m.origin == 'selected' %}<span class="tag selected">선택함</span>{% endif %}
+        <bdi class="mtext" dir="auto" data-head>{{ m.text }}</bdi>{% if m.src %} <span class="msrc">({{ m.src }})</span>{% endif %}
         {% for s in m.subs %}<span class="msub">{{ s }}</span>{% endfor %}</span>
     </label>
     {% endfor %}
@@ -180,17 +181,30 @@ document.getElementById('add-oil').addEventListener('click', () => {
 const working = document.getElementById('mat-working');
 if (working) {
   let dirty = false;
+  const busyText = working.textContent.trim();
   document.getElementById('weekly-form').addEventListener('input', () => { dirty = true; });
-  fetch('/api/weekly/enrich', {method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({start: working.dataset.start})})
-    .then(r => r.json()).then(d => {
-      if (d.changed && !dirty) { location.reload(); return; }
-      working.querySelector('.dot').remove();
-      working.append(d.changed ? ' 정리했습니다. 화면을 새로 고치면 한국어 문장으로 보입니다(먼저 편집본을 저장하세요).'
-        : d.over_budget ? ' 오늘 Claude 사용 한도에 도달해 정리하지 못했습니다(.env 의 DAILY_BUDGET_USD).'
-        : ' 정리하지 못했습니다. 원문 제목 그대로 초안에 넣을 수는 있습니다.');
-      working.firstChild.textContent = '';
-    }).catch(() => working.classList.add('failed'));
+  const show = (text, retry) => {
+    working.textContent = text;
+    if (!retry) return;
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = '다시 정리'; b.style.marginLeft = '10px'; b.addEventListener('click', run);
+    working.appendChild(b);
+  };
+  function run() {
+    working.classList.remove('failed');
+    working.innerHTML = '<span class="dot"></span> '; working.append(busyText);
+    fetch('/api/weekly/enrich', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({start: working.dataset.start})})
+      .then(r => r.json()).then(d => {
+        if (d.changed && !d.failed && !dirty) { location.reload(); return; }
+        const done = d.changed ? `${d.changed}건을 정리했습니다. 편집본을 저장한 뒤 새로 고치면 한국어 문장으로 보입니다. ` : '';
+        if (d.over_budget) show(done + '오늘 자동 번역 한도(.env 의 DAILY_BUDGET_USD)에 도달해 나머지는 정리하지 못했습니다.', false);
+        else if (d.failed) { working.classList.add('failed'); show(done + `${d.failed}건은 정리하지 못했습니다(번역 전으로 남습니다).`, true); }
+        else if (d.status === 'busy') show('다른 창에서 정리하는 중입니다. 잠시 뒤 새로 고치세요.', true);
+        else show(done || '정리할 재료가 없습니다.', false);
+      }).catch(() => { working.classList.add('failed'); show('정리 요청이 실패했습니다.', true); });
+  }
+  run();
 }
 const mats = [...document.querySelectorAll('input[name=mat]')];
 const count = () => { const el = document.getElementById('mat-count'); if (el) el.textContent = `${mats.filter(m => m.checked).length} / ${mats.length}건`; };

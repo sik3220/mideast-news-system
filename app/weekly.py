@@ -116,10 +116,32 @@ def materials(conn, data: dict, demo: bool = False) -> list[dict]:
     for m in out:
         m["on"] = choice.get(m["key"], m["origin"] != "recommended")
         m["label"] = ORIGIN_LABELS[m["origin"]]
+        _describe(m)
     out.sort(key=lambda m: (SECTIONS.index(m["section"]), m["day"], list(ORIGIN_LABELS).index(m["origin"])))
     for n, m in enumerate(out, start=1):
         m["n"] = n
     return out
+
+
+# 재료에 세부 내용이 있는지: full = 본문을 읽고 쓴 문장이거나 일일 보고에 실은 문장, title = 제목만 보고 옮긴 것, raw = 번역 전
+DEPTH_LABELS = {"full": "본문 읽음", "title": "제목만", "raw": "번역 전"}
+DEPTH_BASIS = {"full": "본문을 읽고 쓴 문장", "title": "제목만 (세부 내용 없음)", "raw": "원문 제목만 (세부 내용 없음)"}
+_LEADING_DATE = re.compile(r"^\s*\d{1,2}\.\s?\d{1,2}[.,]?\s*")
+
+
+def _describe(m: dict) -> None:
+    """화면 표시용 값: 세부 내용이 있는지(depth)와, 날짜·출처를 뗀 문장(text)."""
+    a = m.get("article")
+    if a is None:
+        m["depth"], m["depth_label"], m["depth_note"] = "full", "일일 문장", m["label"] + " · " + m["basis"]
+        m["text"] = _LEADING_DATE.sub("", m["head"], count=1)
+        return
+    if str(a.get("summary_basis") or "").startswith(("본문 기반", research.WEB_BASIS)):
+        m["depth"] = "full"
+    else:
+        m["depth"] = "title" if a.get("ko_title") else "raw"
+    m["depth_label"], m["depth_note"] = DEPTH_LABELS[m["depth"]], m["basis"]
+    m["text"] = a.get("ko_title") or a["title"]
 
 
 def translate_materials(conn, data: dict, client=None, demo: bool = False) -> dict:
@@ -229,7 +251,7 @@ WEEKLY_APPENDIX = """
   - 머리줄: `M.D, 주체, 핵심 행위` — 그 사안의 핵심 사건과 그 날짜.
   - 하위 줄: 경과를 날짜순으로 `* M.D, …`. 반응·평가·전망은 `☞ …`.
   - 서로 관련 없는 사건을 억지로 묶지 않는다. 묶을 근거가 재료에 드러난 경우에만 묶는다.
-- **재료에 없는 사실·수치·날짜·인과를 지어내지 않는다.** 근거가 "제목 기반"·"원문 제목"인 재료는 그 제목이 말하는 범위를 넘겨 풀어 쓰지 않는다.
+- **재료에 없는 사실·수치·날짜·인과를 지어내지 않는다.** 근거가 "제목만"·"원문 제목만"인 재료는 그 제목이 말하는 범위를 넘겨 풀어 쓰지 않는다.
 - 같은 내용이 여러 재료에 있으면 한 번만 쓴다. 가치가 낮거나 중복인 재료는 빼도 된다.
 - 주간 보고에는 출처를 적지 않는다. 머리줄 끝의 `(출처, 날짜)` 는 뗀다.
 - **재료의 세부 내용을 줄이지 않는다.** 원인·쟁점, 수치, 일정·후속 절차, 발언 요지가 재료에 있으면 하위 줄로 살린다. 제목만 남긴 얕은 항목을 만들지 않는다.
@@ -250,7 +272,7 @@ WEEKLY_APPENDIX = """
 
 
 def material_block(m: dict) -> str:
-    lines = [f"[{m['n']}] ({timeutil.md(m['day'])} · {m['section']} · {m['label']} · 근거: {m['basis']}) {m['head']}"]
+    lines = [f"[{m['n']}] ({timeutil.md(m['day'])} · {m['section']} · {m['label']} · 근거: {DEPTH_BASIS[m['depth']]}) {m['head']}"]
     return "\n".join(lines + [f"    {s}" for s in m["subs"]])
 
 
