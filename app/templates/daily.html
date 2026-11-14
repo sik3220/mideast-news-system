@@ -59,8 +59,8 @@
     <label>경제 / 국제<textarea name="economy" rows="12" placeholder="11.10, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.10)&#10;* 사실 하나&#10;* 사실 둘">{{ data.economy }}</textarea></label>
   </div>
   <button type="submit" name="action" value="import" style="margin-top:8px" {{ 'disabled' if not selected_count }}>
-    이 기간에 선택한 기사 {{ selected_count }}건 가져오기</button>
-  <span class="meta">이라크 국내 사안은 ‘정치 / 치안’에 기사별로, 국제 사안은 ‘경제 / 국제’에 “美-이란, 역내 분쟁 관련” 한 항목의 하위 줄로 들어갑니다. [유가]는 넣지 않습니다. 기존 내용은 지우지 않습니다.</span>
+    선택한 기사 {{ selected_count }}건 가져오기</button>
+  <span class="meta">전날~대상 날짜의 선택 기사를 가져옵니다. 테러·대테러는 1장 사건으로, 이라크 국내 사안은 ‘정치 / 치안’에, 이라크 밖의 사안은 ‘경제 / 국제’의 한 항목으로 들어갑니다. [유가]는 넣지 않고, 이미 있는 항목은 다시 넣지 않습니다.</span>
 </section>
 
 <section class="panel">

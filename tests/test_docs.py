@@ -171,11 +171,13 @@ def test_daily_import_follows_the_report_convention():
            dict(base, category="국제", ko_title="Trump 대통령, 이란과 합의 불필요 표명", title="x", source_name="Aljazeera"),
            dict(base, category="국제", ko_title="IRGC, 보복 경고", title="x", source_name="Aljazeera",
                 published_date="2026-11-13", published_at="2026-11-13T08:00:00Z")]
-    pol, intl = _daily_import(sel, "2026-11-12", "2026-11-13")
+    got = _daily_import(sel, "2026-11-12", "2026-11-13")
+    pol, intl = got["politics"], got["intl"]
+    assert got["skipped_oil"] == 1 and got["events"] == []
     assert [i["head"] for i in pol] == ["11.12, 이라크軍, 최고경계태세 발령 (Shafaq, 11.12)", "11.12, CBI, 환율 인상 결정 (Shafaq, 11.12)"]
     assert intl == [{"head": "11.12~13, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.13)",
                      "subs": ["* (11.12) Trump 대통령, 이란과 합의 불필요 표명", "* (11.13) IRGC, 보복 경고"]}]
-    assert _daily_import(sel[3:4], "2026-11-12")[1][0] == {"head": "11.12, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.12)",
+    assert _daily_import(sel[3:4], "2026-11-12")["intl"][0] == {"head": "11.12, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.12)",
                                                             "subs": ["* Trump 대통령, 이란과 합의 불필요 표명"]}
 
 
@@ -279,3 +281,36 @@ def test_oil_sentences_are_checked_against_the_table_and_for_trend_claims():
     assert weekly_word._oil_direction_warnings(ok, prices) == []
     other_day = weekly_word._oil_direction_warnings("11.10, 긴장 완화 기대감으로 국제유가는 하락", prices)
     assert other_day == ["유가 설명(11.10)의 날짜가 표에 없어 방향을 확인하지 못함"]
+
+
+def test_daily_import_puts_terror_on_slide1_and_non_iraq_items_in_the_international_box(conn):
+    """테러는 1장 사건으로, 이라크 밖의 사안은 태그와 무관하게 경제/국제로. 전날 선택분도 가져오고 중복은 넣지 않는다."""
+    from app import db, main
+    from tests.conftest import make_article
+
+    def add(url, day, **fields):
+        aid, _ = db.upsert_article(conn, make_article(url=url, title=url, published_date=day, published_at=day + "T08:00:00Z",
+                                                      source_name="Shafaq News", source_domain="shafaq.com"))
+        cols = dict(selected=1, summary_status="ok", **fields)
+        conn.execute(f"UPDATE articles SET {', '.join(k + '=?' for k in cols)} WHERE id=?", (*cols.values(), aid))
+        return aid
+
+    add("https://x/terror", "2026-11-14", category="테러", region="이라크",
+        ko_title="이라크軍 항공대, Kirkuk州에서 공습으로 IS 조직원 3명 사살, 조직원 이송 담당 1명 체포")
+    add("https://x/pol", "2026-11-14", category="정치", region="이라크", ko_title="Al-Zaidi 총리, 제4순환도로 조기 완공 지시")
+    add("https://x/iran", "2026-11-13", category="정치", region="이란", ko_title="Trump 대통령, 이란과 합의 불필요 표명")   # 전날, 태그는 정치
+    add("https://x/oil", "2026-11-14", category="유가", region="기타 중동", ko_title="국제유가 혼조")
+    add("https://x/old", "2026-11-13", category="정치", region="이라크", ko_title="재무부 장관, 천궁-II 대금 지급 지시")
+    db.save_edition(conn, "daily", "2026-11-13", {"events": [], "politics": "11.13, 재무부 장관, 천궁-II 대금 지급 지시 (INA, 11.13)",
+                                                   "economy": ""})                    # 전날 보고에 이미 실린 것
+    data = main._daily_default()
+    msg = main._apply_daily_import(conn, data, "2026-11-14")
+    assert data["events"] == [{"time": "", "day": "", "place": "Kirkuk", "type": "counter", "x": 0.321, "y": 0.336,
+                               "text": "Kirkuk州, 이라크軍 항공대, 공습으로 IS 조직원 3명 사살, 조직원 이송 담당 1명 체포"}]
+    assert data["politics"] == "11.14, Al-Zaidi 총리, 제4순환도로 조기 완공 지시 (Shafaq News, 11.14)"
+    assert "IS 조직원" not in data["politics"] and "천궁" not in data["politics"]
+    assert data["economy"] == "11.14, 美-이란, 역내 분쟁 관련 (Shafaq News, 11.14)\n* Trump 대통령, 이란과 합의 불필요 표명"
+    assert "1장 사건 1건" in msg and "정치 / 치안 1건" in msg and "경제 / 국제 1건" in msg and "유가 1건" in msg
+    again = main._apply_daily_import(conn, data, "2026-11-14")                         # 두 번 가져와도 그대로
+    assert len(data["events"]) == 1 and data["politics"].count("제4순환도로") == 1 and data["economy"].count("Trump") == 1
+    assert "새로 넣은 항목이 없습니다" in again and "이미 있는 항목 3건" in again

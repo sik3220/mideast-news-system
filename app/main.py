@@ -475,14 +475,19 @@ def _daily_default() -> dict:
 @app.get("/daily")
 def daily_page(request: Request):
     day = request.query_params.get("date") or timeutil.today_baghdad().isoformat()
+    if request.query_params.get("import"):
+        # 추천 화면의 '선택 기사로 일일 PPT': 넘어오면서 바로 가져오기까지 한다.
+        with db.session() as conn:
+            data = db.get_edition(conn, "daily", day) or _daily_default()
+            msg = _apply_daily_import(conn, data, day)
+            db.save_edition(conn, "daily", day, data)
+        return back("/daily", date=day, msg=msg)
     with db.session() as conn:
         data = db.get_edition(conn, "daily", day) or _daily_default()
         saved = db.get_edition(conn, "daily", day) is not None
         history = _history(conn, "daily", day)
-        # 설정의 지역별 기본 위치(실제 보고서의 표식 위치) 위에, 사용자가 직접 지정해 저장한 위치를 덮어쓴다.
-        locations = {k: {"x": v[0], "y": v[1]} for k, v in (config.topics_config().get("map_locations") or {}).items()}
-        locations.update({r["name"]: {"x": r["x"], "y": r["y"]} for r in conn.execute("SELECT * FROM locations")})
-        selected = _selected(conn, day, data.get("date_to") or day)
+        locations = _locations(conn)
+        selected = _daily_selected(conn, day, data.get("date_to") or "")
     base_ok = config.DAILY_BASE_IMAGE.exists() and config.DAILY_TEMPLATE.exists()
     return render(request, "daily.html", day=day, data=data, saved=saved, history=history, locations=locations,
                   selected_count=len(selected), template_ok=config.DAILY_TEMPLATE.exists(),
@@ -495,31 +500,112 @@ def daily_page(request: Request):
 INTL_HEAD = "美-이란, 역내 분쟁 관련"
 
 
-def _daily_import(selected: list[dict], day: str, date_to: str = "") -> tuple[list[dict], list[dict]]:
-    """선택한 기사를 일일 PPT 2장의 두 상자에 맞게 나눈다. 실제 일일 보고서의 관행을 따른다.
+_COUNTER_WORDS = re.compile(r"작전|체포|검거|사살|수색|소탕|압수|공습|해체|적발")
 
-    - '정치 / 치안' 상자: 이라크 국내 사안 전부(정치·치안·테러·경제). 기사마다 한 항목.
-    - '경제 / 국제' 상자: 국제 사안을 **한 항목**으로 묶는다. 머리줄은 '날짜, 美-이란, 역내 분쟁 관련 (출처, 날짜)',
-      기사 하나가 하위 줄 하나가 된다. 합본이면 하위 줄 앞에 '(11.12)' 처럼 날짜를 붙인다.
-    - [유가]는 일일 PPT에 넣지 않는다(문체 규칙 8절).
-    """
-    pol, intl = [], []
-    for a in sorted(selected, key=lambda a: a.get("published_at") or ""):
-        if a["category"] == "유가":
+
+def _event_from_article(a: dict, locations: dict, with_day: bool) -> dict:
+    """테러·대테러 기사 하나를 1장 사건 줄로 바꾼다. 원본 형식 '지역州, 내용'에 맞추고 지도 위치를 먼저 놓는다."""
+    title = (a.get("ko_title") or a["title"]).strip()
+    event = {"time": "", "day": timeutil.md(a["published_date"]) if with_day and a.get("published_date") else "",
+             "place": "", "text": title, "type": "counter" if _COUNTER_WORDS.search(title) else "terror"}
+    for name in sorted(locations, key=len, reverse=True):
+        m = re.search(re.escape(name) + r"(\s*州)?(\s*(?:에서|내에서|내|일대에서|일대|지역에서|지역))?\s*", title, re.I)
+        if not m:
             continue
-        (intl if a["category"] == "국제" else pol).append(a)
-    pol_items = [_article_item(a, with_source=True) for a in pol]
-    if not intl:
-        return pol_items, []
+        rest = (title[:m.start()] + title[m.end():]).strip(" ,")
+        rest = re.sub(r"\s{2,}", " ", re.sub(r"\s+,", ",", rest))
+        event.update(place=name, text=f"{name}{'州' if m.group(1) else ''}, {rest}", **locations[name])
+        break
+    return event
+
+
+def _daily_import(selected: list[dict], day: str, date_to: str = "", locations: dict | None = None) -> dict:
+    """선택한 기사를 일일 PPT 의 자리에 맞게 나눈다. 실제 일일 보고서의 관행을 따른다.
+
+    - 1장 사건 목록: 테러·대테러 기사. 한 기사가 사건 한 줄이 된다.
+    - 2장 '정치 / 치안': 이라크 국내 사안(정치·치안·경제). 기사마다 한 항목.
+    - 2장 '경제 / 국제': 이라크 밖의 사안(분류가 국제이거나 지역이 이라크가 아님)을 **한 항목**으로 묶는다.
+      머리줄은 '날짜, 美-이란, 역내 분쟁 관련 (출처, 날짜)', 기사 하나가 하위 줄 하나. 합본이면 하위 줄 앞에 '(11.12)'.
+    - [유가]는 일일 PPT에 넣지 않는다(문체 규칙 8절).
+    반환: {events, politics, intl, skipped_oil}
+    """
+    events, pol, intl, oil = [], [], [], 0
     multi = bool(date_to)
-    span = f"{timeutil.md(day)}~{timeutil.md(date_to).split('.')[1]}" if multi else timeutil.md(day)
-    sources = list(dict.fromkeys(ranking.source_display(a, config.topics_config()) for a in intl))[:2]
-    last = timeutil.md(date_to or day)
-    subs = []
-    for a in intl:
-        prefix = f"({timeutil.md(a['published_date'])}) " if multi and a.get("published_date") else ""
-        subs.append(f"* {prefix}{a.get('ko_title') or a['title']}")
-    return pol_items, [{"head": f"{span}, {INTL_HEAD} ({', '.join(sources)}, {last})", "subs": subs}]
+    for a in sorted(selected, key=lambda a: a.get("published_at") or ""):
+        category, region = a.get("category") or "", a.get("region") or "이라크"
+        if category == "유가":
+            oil += 1
+        elif category == "국제" or region != "이라크":
+            intl.append(a)
+        elif category == "테러":
+            events.append(_event_from_article(a, locations or {}, multi))
+        else:
+            pol.append(a)
+    out = {"events": events, "politics": [_article_item(a, with_source=True) for a in pol], "intl": [], "skipped_oil": oil}
+    if intl:
+        span = f"{timeutil.md(day)}~{timeutil.md(date_to).split('.')[1]}" if multi else timeutil.md(day)
+        sources = list(dict.fromkeys(ranking.source_display(a, config.topics_config()) for a in intl))[:2]
+        subs = []
+        for a in intl:
+            prefix = f"({timeutil.md(a['published_date'])}) " if multi and a.get("published_date") else ""
+            subs.append(f"* {prefix}{a.get('ko_title') or a['title']}")
+        out["intl"] = [{"head": f"{span}, {INTL_HEAD} ({', '.join(sources)}, {timeutil.md(date_to or day)})", "subs": subs}]
+    return out
+
+
+def _locations(conn) -> dict:
+    """지역별 표식 위치: 설정의 기본 위치 위에, 사용자가 직접 지정해 저장한 위치를 덮어쓴다."""
+    locations = {k: {"x": v[0], "y": v[1]} for k, v in (config.topics_config().get("map_locations") or {}).items()}
+    locations.update({r["name"]: {"x": r["x"], "y": r["y"]} for r in conn.execute("SELECT * FROM locations")})
+    return locations
+
+
+def _daily_selected(conn, day: str, date_to: str = "") -> list[dict]:
+    """일일에 가져올 선택 기사: 전날부터 대상 날짜(합본이면 종료일)까지. 보고는 '직전 보고 이후'를 다루기 때문이다.
+    전날 일일 편집본에 이미 실린 기사는 뺀다."""
+    prev = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
+    selected = _selected(conn, prev, date_to or day)
+    used = db.get_edition(conn, "daily", prev) or {}
+    seen = _plain(" ".join([used.get("politics", ""), used.get("economy", ""),
+                            *(e.get("text", "") for e in used.get("events") or [])]))
+    return [a for a in selected if not (a.get("published_date") == prev and a.get("ko_title")
+                                        and _plain(a["ko_title"]) in seen)]
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"[\W_]+", "", text or "").lower()
+
+
+def _apply_daily_import(conn, data: dict, day: str) -> str:
+    """선택 기사를 편집본에 넣는다. 이미 있는 항목은 다시 넣지 않고, 어디에 몇 건 넣었는지 알려준다."""
+    got = _daily_import(_daily_selected(conn, day, data.get("date_to") or ""), day, data.get("date_to") or "", _locations(conn))
+    have = _plain(" ".join([data.get("politics", ""), data.get("economy", ""), *(e.get("text", "") for e in data["events"])]))
+    dup = 0
+
+    def fresh(items, key):
+        nonlocal dup
+        out = [it for it in items if _plain(key(it)) not in have]
+        dup += len(items) - len(out)
+        return out
+    events = fresh(got["events"], lambda e: e["text"])
+    politics = fresh(got["politics"], lambda it: it["head"])
+    intl = []
+    for it in got["intl"]:                                # 국제는 한 항목이라 하위 줄 단위로 중복을 본다
+        subs = fresh([{"s": s} for s in it["subs"]], lambda x: x["s"])
+        if subs:
+            intl.append({"head": it["head"], "subs": [x["s"] for x in subs]})
+    data["events"] += events
+    data["politics"] = "\n\n".join(filter(None, [data["politics"].strip(), items_to_text(politics)]))
+    data["economy"] = "\n\n".join(filter(None, [data["economy"].strip(), items_to_text(intl)]))
+    n_intl = sum(len(it["subs"]) for it in intl)
+    added = [f"{label} {n}건" for label, n in (("1장 사건", len(events)), ("정치 / 치안", len(politics)),
+                                               ("경제 / 국제", n_intl)) if n]
+    skipped = [text for text, n in ((f"유가 {got['skipped_oil']}건(일일에는 싣지 않음)", got["skipped_oil"]),
+                                    (f"이미 있는 항목 {dup}건", dup)) if n]
+    if not added and not skipped:
+        return "가져올 선택 기사가 없습니다(전날~대상 날짜에 발행된 선택 기사 기준)."
+    msg = (", ".join(added) + "을 넣었습니다. 문장과 출처를 확인해 주세요.") if added else "새로 넣은 항목이 없습니다."
+    return msg + (" 넣지 않음: " + ", ".join(skipped) + "." if skipped else "")
 
 
 def _daily_from_form(form) -> dict:
@@ -537,7 +623,8 @@ def _daily_from_form(form) -> dict:
                 "type": e.get("type") if e.get("type") in daily_ppt.TYPE_COLORS else "terror"}
         if isinstance(e.get("x"), (int, float)) and isinstance(e.get("y"), (int, float)):
             item["x"], item["y"] = min(1, max(0, float(e["x"]))), min(1, max(0, float(e["y"])))
-        clean.append(item)
+        if item["text"].strip():                         # 문장이 없는 사건 줄은 저장하지 않는다(지도에 표식만 남는 것 방지)
+            clean.append(item)
     date_to = (form.get("date_to") or "").strip()
     if date_to:
         if date.fromisoformat(date_to) <= date.fromisoformat(form.get("date")):
@@ -563,13 +650,7 @@ async def daily_save(request: Request):
     msg = "저장했습니다."
     with db.session() as conn:
         if action == "import":
-            pol, intl = _daily_import(_selected(conn, day, data["date_to"] or day), day, data["date_to"])
-            if not pol and not intl:
-                msg = "이 기간에 선택한 기사가 없습니다."
-            else:
-                data["politics"] = "\n\n".join(filter(None, [data["politics"].strip(), items_to_text(pol)]))
-                data["economy"] = "\n\n".join(filter(None, [data["economy"].strip(), items_to_text(intl)]))
-                msg = "선택한 기사를 본문 끝에 덧붙였습니다. 문장과 출처를 확인해 주세요."
+            msg = _apply_daily_import(conn, data, day)
         db.save_edition(conn, "daily", day, data)
         for e in data["events"]:
             if e["place"] and "x" in e:
