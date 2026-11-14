@@ -9,17 +9,17 @@
     <h3><a href="/article/{{ a.id }}?back={{ qs|urlencode }}" dir="auto">{{ a.published_date|md }}, {{ a.ko_title or a.title }}</a>
       <span class="src">({{ a|src }}, {{ a.published_date|md }})</span></h3>
     {% for line in (a.ko_summary or '').split('\n') if line.strip() %}<p class="sub">{{ line if line.startswith('☞') else '* ' ~ line }}</p>{% endfor %}
-    {% for f in a.summary_flags %}<p class="sub flag">☞ {{ f }}</p>{% endfor %}
-    {% if a.summary_status == 'failed' %}<p class="sub flag">☞ 번역 실패 — 원문 제목 그대로입니다</p>{% endif %}
-    <p class="foot">
+    {% for f in a.summary_flags %}<p class="flag"><b>확인</b>{{ f }}</p>{% endfor %}
+    {% if a.summary_status == 'failed' %}<p class="flag"><b>확인</b>번역 실패 — 원문 제목 그대로입니다</p>{% endif %}
+    <div class="foot">
       {% for t in a.topics if t != 'korea_media' %}<span class="tag">{{ topics[t] }}</span>{% endfor %}
-      {% if a.social %}<span class="tag warn">SNS 글 · 여론 참고용 (보고 근거로 쓰지 않음)</span>{% endif %}
-      {% if a.n_sources >= 2 %}<span>매체 {{ a.n_sources }}곳 보도</span>{% endif %}
-      {% if a.url.startswith('http') %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문</a>{% else %}<span>직접 추가</span>{% endif %}
-      {% if a.summary_basis == '본문 기반' %}<span>본문 기반</span>{% endif %}
+      {% if a.social %}<span class="tag warn">SNS 글 · 여론 참고용</span>{% endif %}
+      {% if a.summary_basis == '본문 기반' %}<span class="tag plain">본문 기반</span>{% endif %}
+      {% if a.n_sources >= 2 %}<span>매체 {{ a.n_sources }}곳</span>{% endif %}
+      {% if a.url.startswith('http') %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문 열기</a>{% else %}<span>직접 추가</span>{% endif %}
       {% if a.related %}
       <details>
-        <summary>같은 사건 {{ a.related|length }}건</summary>
+        <summary>같은 사건 {{ a.related|length }}건 더</summary>
         <ul>
         {% for r in a.related %}
           <li><a href="/article/{{ r.id }}?back={{ qs|urlencode }}" dir="auto">{{ r.ko_title or r.title }}</a>
@@ -28,7 +28,7 @@
         </ul>
       </details>
       {% endif %}
-    </p>
+    </div>
   </div>
 </article>
 {% endmacro %}
@@ -120,7 +120,7 @@
   </nav>
   {% for title, items in sections %}
   <section class="group" data-sec="{{ title }}">
-    <h2>{{ title }}</h2>
+    <h2>{{ title }} <span>{{ items|length }}</span></h2>
     {% for a in items %}{{ item(a, qs) }}{% endfor %}
   </section>
   {% endfor %}
