@@ -360,7 +360,28 @@ def _history(conn, kind: str, key: str) -> list[dict]:
     return [dict(r) | {"warnings": json.loads(r["warnings"])} for r in rows]
 
 
+KEEP_GENERATED_DAYS = 14
+
+
+def _prune_generated(conn, kind: str, key: str) -> None:
+    """생성 파일이 쌓이지 않게 한다: 같은 문서의 이전 파일과, 만든 지 2주가 넘은 파일을 지운다.
+
+    편집 내용은 따로 저장돼 있어 언제든 다시 만들 수 있으므로 파일을 남겨 둘 필요가 없다.
+    """
+    cutoff = timeutil.iso(timeutil.now_utc() - timedelta(days=KEEP_GENERATED_DAYS))
+    rows = conn.execute("SELECT id, filename FROM generated_files WHERE (kind=? AND key=?) OR created_at<?",
+                        (kind, key, cutoff)).fetchall()
+    folder = _generated_dir().resolve()
+    for r in rows:
+        path = (folder / r["filename"]).resolve()
+        if path.parent == folder and path.suffix in (".pptx", ".docx", ".pdf"):
+            for f in (path, path.with_suffix(".pdf")):
+                f.unlink(missing_ok=True)
+        conn.execute("DELETE FROM generated_files WHERE id=?", (r["id"],))
+
+
 def _record(conn, kind: str, key: str, filename: str, version: str, warnings: list[str]) -> None:
+    _prune_generated(conn, kind, key)                    # 방금 만든 파일만 남긴다
     conn.execute("INSERT INTO generated_files (kind, key, filename, template_version, created_at, warnings) "
                  "VALUES (?,?,?,?,?,?)", (kind, key, filename, version, timeutil.iso(timeutil.now_utc()),
                                           json.dumps(warnings, ensure_ascii=False)))
@@ -592,7 +613,7 @@ def weekly_page(request: Request):
         pass
     return render(request, "weekly.html", start=start, data=data, saved=stored is not None, history=history,
                   materials=mats, security=weekly.security_list(mats), origin_labels=weekly.ORIGIN_LABELS,
-                  weekly_model=config.llm_weekly_model(), errors=errors, warnings=warnings, total=total,
+                  weekly_model=config.llm_weekly_model(), pending=sum(1 for m in mats if m.get("needs")), errors=errors, warnings=warnings, total=total,
                   stat_fields=weekly_word.STAT_FIELDS, oil_fields=weekly_word.OIL_FIELDS,
                   template_ok=config.WEEKLY_TEMPLATE.exists(), msg=request.query_params.get("msg", ""),
                   version=config.WEEKLY_TEMPLATE_VERSION)
@@ -654,6 +675,27 @@ async def weekly_save(request: Request):
             _record(conn, "weekly", start, filename, config.WEEKLY_TEMPLATE_VERSION, warnings)
             msg = "DOCX 를 만들었습니다." + (f" 확인할 점 {len(warnings)}건이 있습니다." if warnings else "")
     return back("/weekly", start=start, msg=msg)
+
+
+@app.post("/api/weekly/enrich")
+async def api_weekly_enrich(request: Request):
+    """주간 화면이 열릴 때 스스로 부른다: 재료 가운데 원문 제목 그대로인 기사를 보고서 문체로 옮긴다."""
+    start = str((await request.json()).get("start"))
+    date.fromisoformat(start)
+    if not config.llm_configured():
+        return JSONResponse({"status": "unconfigured"})
+    if not _enrich_lock.acquire(blocking=False):
+        return JSONResponse({"status": "busy"})
+    try:
+        def work():
+            with db.session() as conn:
+                data = db.get_edition(conn, "weekly", start) or _week_default(conn, start)
+                return weekly.translate_materials(conn, data, demo=config.demo_mode())
+        total = await run_in_threadpool(work)
+    finally:
+        _enrich_lock.release()
+    return JSONResponse({"status": "done", "changed": total["ok"], "failed": total["failed"],
+                         "over_budget": bool(total.get("over_budget"))})
 
 
 @app.post("/weekly/upload")

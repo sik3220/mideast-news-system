@@ -29,6 +29,8 @@
   <h2 class="sec">① 이번 주 재료 <span class="meta">— 체크한 것만 초안에 들어갑니다 (<span id="mat-count"></span>)</span></h2>
   <p class="hint">일일 PPT에 실은 문장과 선택한 기사는 처음부터 체크되어 있고, ‘추천만’은 꺼져 있습니다.
     일일에 빠졌지만 주간에 넣을 것은 체크하고, 일일에 실었지만 뺄 것은 체크를 푸세요. 목록에 없는 사안은 추천 기사 화면의 ‘직접 항목 추가’로 넣습니다.</p>
+  {% if pending and llm_ready %}<div class="working" id="mat-working" role="status" data-start="{{ start }}">
+    <span class="dot"></span> 원문 제목 그대로인 재료 {{ pending }}건을 보고서 문체로 정리하고 있습니다. 끝나면 목록이 바뀝니다.</div>{% endif %}
   {% if materials %}
   <div class="mats">
     {% for day, group in materials|groupby('day') %}
@@ -166,6 +168,22 @@ document.getElementById('add-oil').addEventListener('click', () => {
   row.querySelectorAll('input').forEach(i => i.value = '');
   document.querySelector('#oil-table tbody').appendChild(row);
 });
+// 재료 번역: 화면이 열리면 스스로 실행한다. 그사이 입력한 내용이 있으면 지우지 않도록 새로 고침은 하지 않는다.
+const working = document.getElementById('mat-working');
+if (working) {
+  let dirty = false;
+  document.getElementById('weekly-form').addEventListener('input', () => { dirty = true; });
+  fetch('/api/weekly/enrich', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({start: working.dataset.start})})
+    .then(r => r.json()).then(d => {
+      if (d.changed && !dirty) { location.reload(); return; }
+      working.querySelector('.dot').remove();
+      working.append(d.changed ? ' 정리했습니다. 화면을 새로 고치면 한국어 문장으로 보입니다(먼저 편집본을 저장하세요).'
+        : d.over_budget ? ' 오늘 Claude 사용 한도에 도달해 정리하지 못했습니다(.env 의 DAILY_BUDGET_USD).'
+        : ' 정리하지 못했습니다. 원문 제목 그대로 초안에 넣을 수는 있습니다.');
+      working.firstChild.textContent = '';
+    }).catch(() => working.classList.add('failed'));
+}
 const mats = [...document.querySelectorAll('input[name=mat]')];
 const count = () => { const el = document.getElementById('mat-count'); if (el) el.textContent = `${mats.filter(m => m.checked).length} / ${mats.length}건`; };
 mats.forEach(m => m.addEventListener('change', count)); count();

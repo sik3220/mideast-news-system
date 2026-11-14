@@ -91,3 +91,38 @@ def test_draft_without_materials_or_key_does_not_call_claude(conn, monkeypatch):
     _seed(conn)
     data = dict(WEEK, politics="그대로")
     assert weekly.make_draft(conn, data)[0] == "unconfigured" and data["politics"] == "그대로"
+
+
+def test_untranslated_materials_are_put_into_report_style(conn, monkeypatch):
+    """지난 날짜의 '추천만' 재료는 번역된 적이 없을 수 있다. 재료 목록을 열면 한꺼번에 옮긴다."""
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    _, other = _seed(conn)
+    before = {m["article_id"]: m for m in weekly.materials(conn, dict(WEEK)) if m.get("article_id")}
+    assert before[other]["needs"] and "budget draft law" in before[other]["head"]
+    seen = {}
+    server, client = _serve({"items": [{"id": other, "title": "이라크 내각, 2027년 예산안 승인", "subs": [], "tag": "정치",
+                                        "stage": "승인", "claim_type": "언론 보도", "followups": []}]}, seen)
+    try:
+        counts = weekly.translate_materials(conn, dict(WEEK), client)
+    finally:
+        server.shutdown()
+    assert counts["ok"] == 1 and seen["body"]["model"] == "claude-haiku-5-5"
+    after = {m["article_id"]: m for m in weekly.materials(conn, dict(WEEK)) if m.get("article_id")}
+    assert after[other]["head"].startswith("11.10, 이라크 내각, 2027년 예산안 승인") and not after[other]["needs"]
+
+
+def test_generating_again_keeps_only_the_latest_file(conn, data_dir):
+    from app import main
+    folder = main._generated_dir()
+    for name in ("daily_a.pptx", "daily_b.pptx", "other_day.pptx"):
+        (folder / name).write_bytes(b"x")
+    main._record(conn, "daily", "2026-11-14", "daily_a.pptx", "v", [])
+    main._record(conn, "daily", "2026-11-13", "other_day.pptx", "v", [])
+    main._record(conn, "daily", "2026-11-14", "daily_b.pptx", "v", [])
+    assert sorted(p.name for p in folder.iterdir()) == ["daily_b.pptx", "other_day.pptx"]   # 같은 날짜는 최신 것만
+    assert [r["filename"] for r in conn.execute("SELECT filename FROM generated_files ORDER BY id")] == [
+        "other_day.pptx", "daily_b.pptx"]
+    conn.execute("UPDATE generated_files SET created_at='2026-01-01T00:00:00Z' WHERE filename='other_day.pptx'")
+    (folder / "weekly_c.docx").write_bytes(b"x")
+    main._record(conn, "weekly", "2026-11-08", "weekly_c.docx", "v", [])
+    assert sorted(p.name for p in folder.iterdir()) == ["daily_b.pptx", "weekly_c.docx"]     # 2주 넘은 파일은 지운다

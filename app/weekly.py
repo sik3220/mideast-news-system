@@ -81,7 +81,8 @@ def materials(conn, data: dict, demo: bool = False) -> list[dict]:
             return
         seen.add(a["id"])
         day = a.get("published_date") or start
-        out.append({"key": f"a{a['id']}", "day": day, "origin": origin, "article_id": a["id"],
+        out.append({"key": f"a{a['id']}", "day": day, "origin": origin, "article_id": a["id"], "article": a,
+                    "needs": llm.needs_summary(a),
                     "head": f"{timeutil.md(day)}, {title} ({ranking.source_display(a, cfg)})",
                     "subs": [_sub(x) for x in (a.get("ko_summary") or "").split("\n") if x.strip()],
                     "tag": a.get("category") or "",
@@ -103,6 +104,19 @@ def materials(conn, data: dict, demo: bool = False) -> list[dict]:
     for n, m in enumerate(out, start=1):
         m["n"] = n
     return out
+
+
+def translate_materials(conn, data: dict, client=None, demo: bool = False) -> dict:
+    """재료 가운데 아직 보고서 문체로 옮기지 않은 기사(원문 제목 그대로인 것)를 한꺼번에 옮긴다.
+
+    지난 날짜의 '추천만' 기사는 그날 화면에 보이지 않았으면 번역된 적이 없다. 재료 목록을 읽을 수 있게 여기서 채운다.
+    """
+    pending = [m["article"] for m in materials(conn, data, demo) if m.get("needs")]
+    if not pending:
+        return {"ok": 0, "failed": 0, "remaining": 0}
+    if client is None and llm.budget_exceeded(conn):
+        return {"ok": 0, "failed": 0, "remaining": len(pending), "over_budget": True}
+    return llm.summarize_batch(conn, pending, client)
 
 
 def security_list(mats: list[dict]) -> list[dict]:
