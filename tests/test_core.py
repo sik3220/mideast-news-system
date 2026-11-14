@@ -654,3 +654,18 @@ def test_korean_articles_can_be_left_as_they_are(conn, monkeypatch):
     assert llm.needs_summary(a)                              # 기본: 한국어 기사도 문체 규칙대로 다시 쓴다
     monkeypatch.setenv("SUMMARIZE_KOREAN", "0")
     assert not llm.needs_summary(a)
+
+
+def test_baghdad_time_works_without_timezone_database(monkeypatch):
+    """윈도우처럼 시간대 데이터가 없는 환경에서도 같은 결과가 나온다(고정 UTC+3)."""
+    import importlib, zoneinfo
+    def missing(key):
+        raise zoneinfo.ZoneInfoNotFoundError(key)
+    monkeypatch.setattr(zoneinfo, "ZoneInfo", missing)
+    fallback = importlib.reload(timeutil)
+    try:
+        assert fallback.baghdad_date(fallback.parse_iso("2026-11-09T21:30:00Z")) == "2026-11-10"
+        assert fallback.day_bounds_utc("2026-11-10", "2026-11-10") == ("2026-11-09T21:00:00Z", "2026-11-10T21:00:00Z")
+    finally:
+        monkeypatch.undo()
+        importlib.reload(timeutil)

@@ -9,9 +9,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-BAGHDAD = ZoneInfo("Asia/Baghdad")
+try:
+    BAGHDAD = ZoneInfo("Asia/Baghdad")
+except ZoneInfoNotFoundError:
+    # 윈도우에는 시간대 데이터가 기본으로 없다(tzdata 패키지 필요). 바그다드는 서머타임 없이
+    # 연중 UTC+3 이므로, 데이터가 없어도 같은 결과가 나오는 고정 시간대로 대신한다.
+    BAGHDAD = timezone(timedelta(hours=3), "Asia/Baghdad")
 UTC = timezone.utc
 
 
