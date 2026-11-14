@@ -126,7 +126,7 @@ def check(data: dict) -> tuple[list[str], list[str]]:
                     raise ValueError
             except ValueError:
                 errors.append(f"유가 {row.get('date') or '?'} ‘{label}’ 값이 숫자가 아님")
-    if not errors and complete and len(prices) >= 2:
+    if not errors:
         warnings += _oil_direction_warnings(data.get("oil", ""), prices)
     if not errors:
         warnings += _table_sanity_warnings(data, stats, prices)
@@ -169,22 +169,61 @@ def _table_sanity_warnings(data: dict, stats: dict, prices: list[dict]) -> list[
     return out
 
 
+FLAT_RATIO = 0.001          # 전일 대비 0.1% 미만의 변화는 보합으로 본다
+_TREND_WORDS = re.compile(r"연속|주간|월간|\d+\s*주\b|\d+\s*주\s")
+
+
+def price_moves(prices: list[dict]) -> list[dict]:
+    """유가 표에서 날짜별 전일 대비 변화를 구한다. 첫 행(전일 값 없음)과 숫자가 빠진 행은 건너뛴다.
+
+    반환: [{date, prev, moves: {유종: (방향 '상승'|'하락'|'보합', 차이)}, overall: '상승'|'하락'|'보합'|'혼조'}]
+    """
+    def numbers(row):
+        try:
+            return {label: float(row.get(key)) for key, label in OIL_FIELDS}
+        except (TypeError, ValueError):
+            return None
+    out, prev, prev_date = [], None, ""
+    for row in prices:
+        cur = numbers(row)
+        day = str(row.get("date") or "").strip()
+        if cur and prev and day:
+            moves = {}
+            for label, v in cur.items():
+                diff = v - prev[label]
+                moves[label] = ("보합" if abs(diff) < prev[label] * FLAT_RATIO else "상승" if diff > 0 else "하락", diff)
+            kinds = {d for d, _ in moves.values()} - {"보합"}
+            overall = "보합" if not kinds else kinds.pop() if len(kinds) == 1 else "혼조"
+            out.append({"date": day, "prev": prev_date, "moves": moves, "overall": overall})
+        if cur and day:
+            prev, prev_date = cur, day
+    return out
+
+
 def _oil_direction_warnings(oil_text: str, prices: list[dict]) -> list[str]:
-    """가격 설명의 '상승/하락'이 표의 전일 대비 변화와 어긋나면 알린다(단순 규칙)."""
+    """유가 설명을 표와 대조한다(단순 규칙): 방향이 표와 어긋나는지, 표로 확인할 수 없는 추세 표현이 있는지."""
     out = []
-    by_date = {str(p["date"]).strip(): p for p in prices}
-    order = [str(p["date"]).strip() for p in prices]
+    moves = {m["date"]: m for m in price_moves(prices)}
+    dates = {str(p.get("date") or "").strip() for p in prices}
     for item in parse_items(oil_text):
-        m = re.match(r"\s*(\d{1,2}\.\d{1,2})", item["head"])
-        if not m or m.group(1) not in by_date or order.index(m.group(1)) == 0:
-            continue
-        cur, prev = by_date[m.group(1)], by_date[order[order.index(m.group(1)) - 1]]
-        diffs = [float(cur[k]) - float(prev[k]) for k, _ in OIL_FIELDS]
         text = item["head"] + " ".join(item["subs"])
-        if "상승" in text and "하락" not in text and all(d < 0 for d in diffs):
-            out.append(f"유가 설명({m.group(1)})은 ‘상승’인데 표의 세 유종은 모두 전일보다 낮음")
-        if "하락" in text and "상승" not in text and all(d > 0 for d in diffs):
-            out.append(f"유가 설명({m.group(1)})은 ‘하락’인데 표의 세 유종은 모두 전일보다 높음")
+        m = re.match(r"\s*(\d{1,2}\.\d{1,2})", item["head"])
+        day = m.group(1) if m else "날짜 없음"
+        if _TREND_WORDS.search(text):
+            out.append(f"유가 설명({day})에 ‘연속·주간’ 같은 기간 추세 표현이 있음 — 표로 확인할 수 없으니 근거 확인")
+        if m and dates - {""} and day not in dates:
+            out.append(f"유가 설명({day})의 날짜가 표에 없어 방향을 확인하지 못함")
+        mv = moves.get(day)
+        if not mv:
+            continue
+        up, down = "상승" in text, "하락" in text
+        if mv["overall"] == "하락" and up and not down:
+            out.append(f"유가 설명({day})은 ‘상승’인데 표의 유종은 전일보다 낮음")
+        elif mv["overall"] == "상승" and down and not up:
+            out.append(f"유가 설명({day})은 ‘하락’인데 표의 유종은 전일보다 높음")
+        elif mv["overall"] == "혼조" and (up != down) and "혼조" not in text:
+            detail = ", ".join(f"{label} {d}" for label, (d, _) in mv["moves"].items())
+            out.append(f"유가 설명({day})은 ‘{'상승' if up else '하락'}’인데 표는 유종별로 엇갈림({detail}) — ‘혼조’ 등으로 확인")
     return out
 
 

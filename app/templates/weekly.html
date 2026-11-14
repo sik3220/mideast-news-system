@@ -106,7 +106,7 @@
   <label>유가 동향 설명 (날짜별 등락과 그 원인)<textarea name="oil" rows="5" placeholder="11.10, …에 따른 긴장 완화 기대감으로 국제유가는 2개월 만에 최저치 기록">{{ data.oil }}</textarea></label>
   <div class="row" style="margin:6px 0 10px">
     <button type="submit" name="action" value="oil" {{ 'disabled' if not llm_ready }}>유가 등락 원인 찾아 쓰기</button>
-    <span class="meta">Claude 가 그날의 유가 시황 기사를 검색해 원인을 한 줄씩 씁니다(1회 호출). 표에 날짜를 넣었으면 그 날짜, 없으면 기간의 마지막 평일 이틀. 가격 숫자는 쓰지 않습니다.</span>
+    <span class="meta"><b>아래 표에 가격을 먼저 넣으세요.</b> 방향(상승·하락·혼조)은 표의 값에 맞추고, 원인만 그날의 시황 기사에서 찾아 한 줄씩 씁니다(1회 호출).</span>
   </div>
   <table class="form" aria-label="유가 표" id="oil-table">
     <tr><th>날짜 (예: 11.10)</th>{% for k, label in oil_fields %}<th>{{ label }} ($)</th>{% endfor %}</tr>
@@ -115,8 +115,10 @@
       {% for k, label in oil_fields %}<td><input type="text" inputmode="decimal" name="oil_{{ k }}" value="{{ row[k] }}" aria-label="{{ label }}"></td>{% endfor %}</tr>
     {% endfor %}
   </table>
-  <button type="button" id="add-oil">행 추가</button>
-  <a class="btn" href="https://www.opinet.co.kr/" target="_blank" rel="noopener noreferrer">오피넷 열기 (국제유가)</a>
+  <div class="row tools">
+    <button type="button" id="add-oil">행 추가</button>
+    <a class="btn" href="https://www.opinet.co.kr/gloptotSelect.do" target="_blank" rel="noopener noreferrer">오피넷 국제유가 열기</a>
+  </div>
   <p class="hint">가격은 직접 입력한 값만 표에 들어갑니다. 비워 두면 문서에도 빈 칸으로 들어갑니다. 원본은 최근 2일을 싣습니다.</p>
 </section>
 

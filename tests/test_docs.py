@@ -264,3 +264,18 @@ def test_glossary_uses_report_notation_for_currency_and_security_office():
     from app import llm
     assert llm.apply_glossary("16조 디나르 해외 차입 계획 부인") == "16조 IQD 해외 차입 계획 부인"
     assert llm.apply_glossary("안보공보실(Security Media Cell), 공습 발표") == "보안당국, 공습 발표"
+
+
+def test_oil_sentences_are_checked_against_the_table_and_for_trend_claims():
+    """사용자가 준 실제 값(11.12 → 11.13: 두바이유 상승, 브렌트유 보합, WTI 하락)으로 유가 문장을 대조한다."""
+    prices = [{"date": "11.12", "dubai": "90.10", "brent": "95.82", "wti": "88.74"},
+              {"date": "11.13", "dubai": "92.04", "brent": "95.84", "wti": "88.56"}]
+    move = weekly_word.price_moves(prices)[0]
+    assert move["overall"] == "혼조" and [d for d, _ in move["moves"].values()] == ["상승", "보합", "하락"]
+    bad = "11.13, 세계 공급과잉 조짐 확산에 대한 시장의 해석으로 국제유가는 2주 연속 주간 하락"
+    w = weekly_word._oil_direction_warnings(bad, prices)
+    assert any("기간 추세 표현" in x for x in w) and any("엇갈림" in x and "혼조" in x for x in w)
+    ok = "11.13, 공급과잉 우려와 중동 긴장이 맞서며 국제유가는 혼조"
+    assert weekly_word._oil_direction_warnings(ok, prices) == []
+    other_day = weekly_word._oil_direction_warnings("11.10, 긴장 완화 기대감으로 국제유가는 하락", prices)
+    assert other_day == ["유가 설명(11.10)의 날짜가 표에 없어 방향을 확인하지 못함"]

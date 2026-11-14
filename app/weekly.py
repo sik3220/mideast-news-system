@@ -178,6 +178,16 @@ def oil_days(data: dict) -> list[str]:
     return days[-2:]
 
 
+def oil_table_text(data: dict) -> str:
+    """유가 표의 날짜별 전일 대비 변화를 Claude 에게 보낼 글로 만든다. 방향은 이 표가 기준이다."""
+    from .docs import weekly_word
+    lines = []
+    for m in weekly_word.price_moves(data.get("oil_prices") or []):
+        detail = ", ".join(f"{label} {d}({diff:+.2f})" for label, (d, diff) in m["moves"].items())
+        lines.append(f"{m['date']} (전일 {m['prev']} 대비): {detail} → 종합 {m['overall']}")
+    return "\n".join(lines)
+
+
 def security_list(mats: list[dict]) -> list[dict]:
     """테러 통계를 셀 때 옆에 두고 볼 치안·테러 재료."""
     return [m for m in mats if m["tag"] in SECURITY_TAGS]
@@ -269,7 +279,7 @@ WEEKLY_APPENDIX = """
 ## 구역
 - politics: 이라크 국내 정치·정부·의회·경제 정책·비스마야/한화/NIC 관련. 날짜순.
 - terror: 이라크 내 테러·대테러 작전·치안 사건의 상세. 날짜순.
-- oil: 국제유가 동향. **하위 줄을 쓰지 않는다(subs 는 빈 목록).** 가격($)과 등락률(%)을 쓰지 않는다. 날짜별로 **등락의 원인**을 한 문장으로 쓴다: `M.D, [원인이 된 사건·발언]에 따른 [시장의 해석]으로 국제유가는 [상승/하락/수준]`. 재료에 있는 내용만 쓰고 가격 숫자를 만들어 내지 않는다.
+- oil: 국제유가 동향. **하위 줄을 쓰지 않는다(subs 는 빈 목록).** 가격($)과 등락률(%)을 쓰지 않는다. 그날의 전일 대비 등락만 쓰고 "N주 연속·주간 하락" 같은 기간 추세나 "예상된다"는 전망을 결과처럼 쓰지 않는다. 날짜별로 **등락의 원인**을 한 문장으로 쓴다: `M.D, [원인이 된 사건·발언]에 따른 [시장의 해석]으로 국제유가는 [상승/하락/수준]`. 재료에 있는 내용만 쓰고 가격 숫자를 만들어 내지 않는다.
 - intl: 이라크 밖의 역내·국제 사안. 주제별 소제목으로 묶는다. <previous_titles> 의 소제목이 맞으면 그대로 쓰고, 맞는 것이 없을 때만 같은 형식으로 새로 만든다.
 - 해당 재료가 없는 구역은 빈 목록으로 둔다.
 

@@ -695,11 +695,13 @@ async def weekly_save(request: Request):
     elif action == "oil":
         def work_oil():
             with db.session() as c:
-                return research.oil_notes(c, weekly.oil_days(data))
+                return research.oil_notes(c, weekly.oil_days(data), table=table)
+        table = weekly.oil_table_text(data)
         status, text = await run_in_threadpool(work_oil)
         if status == "ok":
             data["oil"] = "\n\n".join(filter(None, [data["oil"].strip(), text]))
-            msg = "유가 등락 원인을 찾아 ‘유가 동향 설명’에 넣었습니다. 표의 가격과 방향이 맞는지 확인해 주세요."
+            msg = ("유가 등락 원인을 찾아 ‘유가 동향 설명’에 넣었습니다. 방향은 표의 값에 맞췄습니다." if table else
+                   "유가 등락 원인을 찾아 넣었습니다. 표에 가격이 없어 방향을 표와 대조하지 못했으니 직접 확인해 주세요.")
         else:
             msg = text
     elif action == "undo":

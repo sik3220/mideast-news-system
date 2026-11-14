@@ -128,7 +128,10 @@ def test_oil_notes_search_for_the_cause_of_price_moves_and_write_no_prices(conn)
     reply = "OIL: 11.12, 트럼프 대통령의 대이란 제재 완화 시사에 따른 공급 증가 전망으로 국제유가는 하락\nOIL: 11.13, 美 원유 재고 감소 발표로 전일 대비 소폭 상승"
     server, client = _serve(reply, seen)
     try:
-        status, text = research.oil_notes(conn, weekly.oil_days(week), client)
+        table = weekly.oil_table_text({"oil_prices": [{"date": "11.12", "dubai": "90.10", "brent": "95.82", "wti": "88.74"},
+                                                      {"date": "11.13", "dubai": "92.04", "brent": "95.84", "wti": "88.56"}]})
+        assert table == "11.13 (전일 11.12 대비): 두바이유 상승(+1.94), 브렌트유 보합(+0.02), 서부텍사스유(WTI) 하락(-0.18) → 종합 혼조"
+        status, text = research.oil_notes(conn, weekly.oil_days(week), client, table=table)
     finally:
         server.shutdown()
     assert status == "ok"
@@ -137,6 +140,9 @@ def test_oil_notes_search_for_the_cause_of_price_moves_and_write_no_prices(conn)
     assert body["tools"] == [{"type": "web_search_20260209", "name": "web_search", "max_uses": 4}]
     assert "등락의 원인" in body["system"][0]["text"] and "가격 숫자($)는 쓰지 않는다" in body["system"][0]["text"]
     assert "2026-11-12" in body["messages"][0]["content"]
+    assert "종합 혼조" in body["messages"][0]["content"]                         # 표의 방향을 함께 보낸다
+    rules = body["system"][0]["text"]
+    assert "방향은 <table> 이 기준" in rules and "전망·장중 표현을 확정된 결과로 쓰지 않는다" in rules and "기간 추세는 쓰지 않는다" in rules
     assert conn.execute("SELECT purpose FROM llm_usage").fetchone()["purpose"] == "oil_notes"
 
 
