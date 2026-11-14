@@ -119,3 +119,14 @@ table.form td,table.form th{padding:3px 6px;text-align:center;font-size:13.5px}t
 .working.failed .dot{animation:none;background:var(--bad)}
 @keyframes pulse{from{opacity:.25}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.working .dot{animation:none}}
+
+/* ── 주간 Word: 재료 목록 ── */
+.mats{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:2px 12px 10px;background:#fdfcfa}
+.mats h3.sub{margin:12px 0 4px;font-size:13px;color:#7a3208;position:sticky;top:0;background:#fdfcfa;padding:3px 0}
+.mat{flex-direction:row;align-items:flex-start;gap:9px;padding:5px 4px;border-top:1px solid #efede7;color:var(--ink);font-size:14px;line-height:1.55;cursor:pointer}
+.mat>input[type=checkbox]{flex:none;width:16px;height:16px;margin-top:4px;accent-color:var(--accent)}
+.mat .tag{font-size:12px;border-radius:4px;padding:0 6px;margin-right:6px;background:var(--chip);color:var(--muted);white-space:nowrap}
+.mat .tag.daily,.mat .tag.upload{background:#f7e6d8;color:#7a3208}.mat .tag.selected{background:#e3eefb;color:#1d4f86}
+.mat .msub{display:block;margin-left:12px;font-size:13.5px;color:#44443f}
+.mat.recommended:not(:has(input:checked)){color:var(--muted)}
+details.basis{margin-top:10px;font-size:14px}details.basis summary{cursor:pointer;color:#3c5f80}

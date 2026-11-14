@@ -12,17 +12,70 @@
   {% if not template_ok %}<div class="errbox">원본 양식 파일(doc_templates/weekly_template.docx)이 없어 DOCX 를 만들 수 없습니다.</div>{% endif %}
 </section>
 
-<form method="post" action="/weekly/save">
+<form id="upload-form" method="post" action="/weekly/upload" enctype="multipart/form-data">
+  <input type="hidden" name="start" value="{{ start }}"></form>
+<form method="post" action="/weekly/save" id="weekly-form" data-busy>
 <input type="hidden" name="start" value="{{ start }}">
 <section class="panel">
   <div class="row">
     <label>기간 시작<input type="date" name="period_start" value="{{ data.period_start }}" required></label>
     <label>기간 종료<input type="date" name="period_end" value="{{ data.period_end }}" required></label>
     <label>작성일<input type="date" name="report_date" value="{{ data.report_date }}" required></label>
-    <button type="submit" name="action" value="import" {{ 'disabled' if not selected_count }}>기간 내 선택한 기사 {{ selected_count }}건 가져오기</button>
+    <button type="submit" name="action" value="save">기간 적용</button>
   </div>
-  <p class="hint">빈 줄로 항목을 나눕니다. 첫 줄이 머리줄(<code>11.5, 주체, 내용</code>), <code>*</code> 는 세부사항, <code>☞</code> 는 평가·후속 줄입니다.
-    하위 줄은 원본처럼 줄 길이에 맞춰 끊어 넣습니다. 가져오기는 각 구역 끝에 덧붙이며 기존 내용을 지우지 않습니다.</p>
+</section>
+
+<section class="panel">
+  <h2 class="sec">① 이번 주 재료 <span class="meta">— 체크한 것만 초안에 들어갑니다 (<span id="mat-count"></span>)</span></h2>
+  <p class="hint">일일 PPT에 실은 문장과 선택한 기사는 처음부터 체크되어 있고, ‘추천만’은 꺼져 있습니다.
+    일일에 빠졌지만 주간에 넣을 것은 체크하고, 일일에 실었지만 뺄 것은 체크를 푸세요. 목록에 없는 사안은 추천 기사 화면의 ‘직접 항목 추가’로 넣습니다.</p>
+  {% if materials %}
+  <div class="mats">
+    {% for day, group in materials|groupby('day') %}
+    <h3 class="sub">{{ day|md }}</h3>
+    {% for m in group %}
+    <label class="mat {{ m.origin }}">
+      <input type="checkbox" name="mat" value="{{ m.key }}" {{ 'checked' if m.on }}>
+      <input type="hidden" name="mat_all" value="{{ m.key }}">
+      <span><span class="tag {{ m.origin }}">{{ m.label }}</span>{% if m.origin in ('selected', 'recommended') %}<span class="tag plain">{{ m.basis }}</span>{% endif %}
+        <span dir="auto">{{ m.head }}</span>
+        {% for s in m.subs %}<span class="msub">{{ s }}</span>{% endfor %}</span>
+    </label>
+    {% endfor %}
+    {% endfor %}
+  </div>
+  {% else %}<p class="empty">이 기간의 재료가 없습니다. 일일 PPT를 저장하거나, 추천 기사에서 기사를 선택하거나, 아래에서 일일 PPT 파일을 올리세요.</p>{% endif %}
+  <div class="row" style="margin-top:10px">
+    <label>손으로 만든 일일 PPT 올리기 (여러 개 가능 · 문장만 읽고 파일은 저장하지 않음)
+      <input type="file" name="files" accept=".pptx" multiple form="upload-form"></label>
+    <button type="submit" form="upload-form">올린 파일을 재료로 읽기</button>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <button class="primary" type="submit" name="action" value="draft" id="draft-btn" {{ 'disabled' if not llm_ready or not materials }}>② 체크한 재료로 초안 만들기</button>
+    {% if data.backup %}<button type="submit" name="action" value="undo">초안 만들기 전으로 되돌리기</button>{% endif %}
+    <span class="spinner" role="status">재료를 엮는 중입니다… 1분쯤 걸릴 수 있습니다.</span>
+    {% if not llm_ready %}<span class="meta">요약 설정 필요 (ANTHROPIC_API_KEY)</span>{% else %}<span class="meta">Claude 1회 호출 · 모델 {{ weekly_model }}</span>{% endif %}
+  </div>
+  <p class="hint">초안은 같은 사안·인과관계가 있는 사건을 한 항목으로 엮고(하위 줄에 날짜순 경과), 구역과 국제사회 소제목별로 나눠 아래 칸에 채웁니다.
+    재료에 없는 내용은 쓰지 않도록 지시하지만 초안일 뿐이니 아래에서 고쳐 주세요. 제목만 있는 재료가 많으면 내용이 얕아집니다.</p>
+  {% if data.draft_sources %}
+  <details class="basis"><summary>초안의 항목별 근거 재료 보기{% if data.draft_flags %} · <b>숫자 확인 {{ data.draft_flags|length }}건</b>{% endif %}</summary>
+    {% if data.draft_flags %}<div class="warnbox"><b>확인</b><ul class="plain">{% for f in data.draft_flags %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
+    {% for sec in data.draft_sources %}
+    <h3 class="sub">{{ sec.section }}</h3>
+    <ul class="plain">{% for it in sec['items'] %}<li><b>{{ it.head }}</b>
+      <ul class="plain">{% for f in it.refs %}<li class="meta">{{ f }}</li>{% else %}<li class="meta">근거 재료 표시 없음 — 확인 필요</li>{% endfor %}</ul></li>{% endfor %}</ul>
+    {% endfor %}
+    {% if data.draft_unused %}<h3 class="sub">초안에 쓰이지 않은 재료</h3>
+    <ul class="plain">{% for u in data.draft_unused %}<li class="meta">{{ u }}</li>{% endfor %}</ul>{% endif %}
+  </details>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2 class="sec">③ 고치기</h2>
+  <p class="hint">빈 줄로 항목을 나눕니다. 첫 줄이 머리줄(<code>11.5, 주체, 내용</code>), <code>*</code> 는 세부사항·경과, <code>☞</code> 는 평가·후속 줄입니다.
+    하위 줄은 원본처럼 줄 길이에 맞춰 끊어 넣습니다.</p>
 </section>
 
 <section class="panel">
@@ -35,8 +88,9 @@
     <tr><td><output id="stat-total" aria-live="polite">{{ total if total is not none else '–' }}</output></td>
       {% for k, label in stat_fields %}<td><input type="number" min="0" step="1" id="stat_{{ k }}" name="stat_{{ k }}" value="{{ data.stats.get(k, '') }}" data-stat></td>{% endfor %}</tr>
   </table>
-  <label style="margin-top:6px">집계 근거 (어떤 자료·기준으로 센 것인지)<input type="text" name="stats_basis" value="{{ data.stats_basis }}"></label>
-  <p class="hint">건수는 직접 입력합니다. ‘계’는 입력값의 합으로 자동 계산됩니다. 추천 기사 수는 주간 사건 집계가 아니므로 자동으로 채우지 않습니다. 해당 유형이 없으면 0 을 넣으세요.</p>
+  <p class="hint">건수는 직접 입력합니다. ‘계’는 입력값의 합으로 자동 계산됩니다. 비워 두면 문서에도 빈 칸으로 들어갑니다(없는 유형은 0).</p>
+  {% if security %}<details class="basis"><summary>이번 주 치안·테러 재료 {{ security|length }}건 — 보면서 세기</summary>
+    <ul class="plain">{% for m in security %}<li>{{ m.head }} <span class="meta">· {{ m.label }}</span></li>{% endfor %}</ul></details>{% endif %}
   <label>사건 상세<textarea name="terror" rows="7">{{ data.terror }}</textarea></label>
 </section>
 
@@ -51,8 +105,8 @@
     {% endfor %}
   </table>
   <button type="button" id="add-oil">행 추가</button>
-  <label style="margin-top:6px">유가 출처·가격 기준 (예: 어느 기관의 종가인지)<input type="text" name="oil_source" value="{{ data.oil_source }}"></label>
-  <p class="hint">가격은 직접 입력한 값만 표에 들어갑니다. 비어 있으면 문서를 만들지 않습니다. 원본은 최근 2일을 싣습니다.</p>
+  <a class="btn" href="https://www.opinet.co.kr/" target="_blank" rel="noopener noreferrer">오피넷 열기 (국제유가)</a>
+  <p class="hint">가격은 직접 입력한 값만 표에 들어갑니다. 비워 두면 문서에도 빈 칸으로 들어갑니다. 원본은 최근 2일을 싣습니다.</p>
 </section>
 
 <section class="panel">
@@ -111,6 +165,13 @@ document.getElementById('add-oil').addEventListener('click', () => {
   const rows = document.querySelectorAll('#oil-table tr'), row = rows[rows.length - 1].cloneNode(true);
   row.querySelectorAll('input').forEach(i => i.value = '');
   document.querySelector('#oil-table tbody').appendChild(row);
+});
+const mats = [...document.querySelectorAll('input[name=mat]')];
+const count = () => { const el = document.getElementById('mat-count'); if (el) el.textContent = `${mats.filter(m => m.checked).length} / ${mats.length}건`; };
+mats.forEach(m => m.addEventListener('change', count)); count();
+document.getElementById('draft-btn').addEventListener('click', ev => {
+  const written = [...document.querySelectorAll('[name=politics],[name=terror],[name=oil],[name=intl_body]')].some(t => t.value.trim());
+  if (written && !confirm('아래 칸에 이미 쓴 내용이 초안으로 바뀝니다. 계속할까요?\n(만든 뒤 "되돌리기"로 복구할 수 있습니다)')) ev.preventDefault();
 });
 document.getElementById('add-intl').addEventListener('click', () => {
   const g = document.querySelector('.intl-group').cloneNode(true);

@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from . import config, db, demo, draft, enrich, llm, pipeline, ranking, timeutil
+from . import config, db, demo, draft, enrich, llm, pipeline, ranking, timeutil, weekly
 from .docs import daily_ppt, preview, weekly_word
 from .docs.items import items_to_text
 
@@ -581,7 +581,7 @@ def weekly_page(request: Request):
         stored = db.get_edition(conn, "weekly", start)
         data = stored or _week_default(conn, start)
         history = _history(conn, "weekly", start)
-        selected = _selected(conn, data["period_start"], data["period_end"])
+        mats = weekly.materials(conn, data, config.demo_mode())
     errors, warnings = weekly_word.check(data)
     while len(data["oil_prices"]) < 2:      # 입력 칸은 원본처럼 최소 2일치를 보여준다
         data["oil_prices"].append({"date": "", "dubai": "", "brent": "", "wti": ""})
@@ -591,7 +591,8 @@ def weekly_page(request: Request):
     except (KeyError, ValueError, TypeError):
         pass
     return render(request, "weekly.html", start=start, data=data, saved=stored is not None, history=history,
-                  selected_count=len(selected), errors=errors, warnings=warnings, total=total,
+                  materials=mats, security=weekly.security_list(mats), origin_labels=weekly.ORIGIN_LABELS,
+                  weekly_model=config.llm_weekly_model(), errors=errors, warnings=warnings, total=total,
                   stat_fields=weekly_word.STAT_FIELDS, oil_fields=weekly_word.OIL_FIELDS,
                   template_ok=config.WEEKLY_TEMPLATE.exists(), msg=request.query_params.get("msg", ""),
                   version=config.WEEKLY_TEMPLATE_VERSION)
@@ -610,9 +611,14 @@ def _weekly_from_form(form) -> dict:
     return {"period_start": form.get("period_start"), "period_end": form.get("period_end"),
             "report_date": form.get("report_date"), "politics": nl("politics"),
             "stats": {k: (form.get(f"stat_{k}") or "").strip() for k, _ in weekly_word.STAT_FIELDS},
-            "stats_basis": (form.get("stats_basis") or "").strip(), "terror": nl("terror"), "oil": nl("oil"),
-            "oil_prices": prices, "oil_source": (form.get("oil_source") or "").strip(),
-            "intl": intl or [{"title": "", "body": ""}], "impact": nl("impact")}
+            "terror": nl("terror"), "oil": nl("oil"), "oil_prices": prices,
+            "intl": intl or [{"title": "", "body": ""}], "impact": nl("impact"),
+            # 재료 체크 상태: 화면에 보였던 재료 가운데 체크된 것만 넣는다.
+            "materials": {k: k in set(form.getlist("mat")) for k in form.getlist("mat_all")}}
+
+
+# 화면의 입력 칸이 아니라 서버가 만들어 편집본에 함께 보관하는 값
+WEEKLY_KEPT = ("uploads", "backup", "draft_sources", "draft_flags", "draft_unused")
 
 
 @app.post("/weekly/save")
@@ -624,28 +630,18 @@ async def weekly_save(request: Request):
         date.fromisoformat(data[k])
     msg = "저장했습니다."
     with db.session() as conn:
-        if action == "import":
-            buckets = {"politics": [], "terror": [], "intl": [], "oil": []}
-            for a in _selected(conn, data["period_start"], data["period_end"]):
-                item = _article_item(a, with_source=False)
-                if a["category"] == "유가":
-                    buckets["oil"].append(item)       # 문체 규칙 8절: [유가]는 주간 Word 경제 분야에만
-                elif a["region"] != "이라크" or a["category"] == "국제":
-                    buckets["intl"].append(item)
-                elif a["category"] in ("치안", "테러"):
-                    buckets["terror"].append(item)
-                else:
-                    buckets["politics"].append(item)
-            n = sum(map(len, buckets.values()))
-            if not n:
-                msg = "이 기간에 선택한 기사가 없습니다."
-            else:
-                for k in ("politics", "terror", "oil"):
-                    data[k] = "\n\n".join(filter(None, [data[k].strip(), items_to_text(buckets[k])]))
-                g = data["intl"][0]
-                g["body"] = "\n\n".join(filter(None, [g["body"].strip(), items_to_text(buckets["intl"])]))
-                msg = (f"선택한 기사 {n}건을 각 구역 끝에 덧붙였습니다. 통계 표는 자동으로 채우지 않습니다 "
-                       "(추천 기사 수는 주간 사건 집계가 아닙니다).")
+        stored = db.get_edition(conn, "weekly", start) or {}
+    data.update({k: stored[k] for k in WEEKLY_KEPT if k in stored})
+    data["materials"] = {**(stored.get("materials") or {}), **data["materials"]}
+    if action == "draft":
+        # Claude 호출은 수십 초 걸릴 수 있어 별도 스레드에서 한다. 사용자가 직접 누른 주 1회 작업이라 하루 한도와 무관하게 실행한다.
+        def work():
+            with db.session() as c:
+                return weekly.make_draft(c, data, demo=config.demo_mode())[1]
+        msg = await run_in_threadpool(work)
+    elif action == "undo":
+        msg = "초안을 만들기 전 내용으로 되돌렸습니다." if weekly.undo_draft(data) else "되돌릴 내용이 없습니다."
+    with db.session() as conn:
         db.save_edition(conn, "weekly", start, data)
         if action == "generate":
             filename = f"weekly_{start}_{timeutil.now_utc().strftime('%H%M%S')}.docx"
@@ -658,3 +654,27 @@ async def weekly_save(request: Request):
             _record(conn, "weekly", start, filename, config.WEEKLY_TEMPLATE_VERSION, warnings)
             msg = "DOCX 를 만들었습니다." + (f" 확인할 점 {len(warnings)}건이 있습니다." if warnings else "")
     return back("/weekly", start=start, msg=msg)
+
+
+@app.post("/weekly/upload")
+async def weekly_upload(request: Request):
+    """손으로 만든 일일 PPT 를 올리면 그 문장을 이번 주 재료로 읽어 둔다. 파일 자체는 저장하지 않는다."""
+    form = await request.form()
+    start = form.get("start")
+    date.fromisoformat(start)
+    read, failed = [], []
+    for f in form.getlist("files"):
+        if not getattr(f, "filename", ""):
+            continue
+        try:
+            read.append(weekly.read_daily_pptx(await f.read()))
+        except Exception as e:                           # 양식이 다르거나 깨진 파일은 건너뛰고 알린다
+            failed.append(f"{f.filename}: {str(e)[:80]}")
+    with db.session() as conn:
+        data = db.get_edition(conn, "weekly", start) or _week_default(conn, start)
+        data.pop("carried", None)
+        days = {u["day"] for u in read}
+        data["uploads"] = [u for u in data.get("uploads") or [] if u["day"] not in days] + read
+        db.save_edition(conn, "weekly", start, data)
+    msg = f"일일 PPT {len(read)}개를 재료로 읽었습니다." if read else "읽은 파일이 없습니다."
+    return back("/weekly", start=start, msg=msg + (" 읽지 못함 — " + " / ".join(failed) if failed else ""))

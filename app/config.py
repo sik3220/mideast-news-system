@@ -66,6 +66,11 @@ def llm_body_model() -> str:
     return os.environ.get("LLM_BODY_MODEL") or "claude-sonnet-5-5"
 
 
+def llm_weekly_model() -> str:
+    """주간 초안을 엮는 모델. 한 주치 재료에서 인과·경과를 판단하는 일이고 주 1회뿐이라 한 단계 위 모델을 쓴다."""
+    return os.environ.get("LLM_WEEKLY_MODEL") or "claude-sonnet-5-5"
+
+
 def summarize_korean() -> bool:
     """한국어 기사도 문체 규칙대로 다시 쓸지. .env 에 SUMMARIZE_KOREAN=0 이면 원래 제목 그대로 둔다."""
     return os.environ.get("SUMMARIZE_KOREAN", "1").strip().lower() not in ("0", "false", "no")

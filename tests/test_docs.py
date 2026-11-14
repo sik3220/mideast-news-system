@@ -126,9 +126,18 @@ def test_word_keeps_template_formatting(tmp_path):
 
 
 @needs_doc
-def test_word_refuses_missing_numbers_instead_of_guessing(tmp_path):
-    for broken in (dict(WEEKLY, stats=dict(WEEKLY["stats"], ied="")), dict(WEEKLY, oil_prices=[]),
-                   dict(WEEKLY, oil_prices=[{"date": "11.17", "dubai": "", "brent": "81", "wti": "79"}])):
+def test_word_leaves_blank_numbers_blank_and_refuses_only_non_numbers(tmp_path):
+    """빈 칸은 추측해 채우지 않고 빈 채로 내보내며 경고한다. 숫자가 아닌 값만 생성을 막는다."""
+    out = tmp_path / "blank.docx"
+    warnings = weekly_word.generate(dict(WEEKLY, stats=dict(WEEKLY["stats"], ied=""), oil_prices=[]), out)
+    assert any("빈 칸" in w for w in warnings) and any("유가 표가 비어" in w for w in warnings)
+    from docx import Document
+    doc = Document(str(out))
+    stat = [c.text.strip() for c in doc.tables[0].rows[1].cells]
+    assert stat[1] == "" and "" in stat[2:]                          # 합계도 비운다
+    assert all(c.text.strip() == "" for row in doc.tables[1].rows[1:] for c in row.cells)
+    for broken in (dict(WEEKLY, stats=dict(WEEKLY["stats"], ied="많음")),
+                   dict(WEEKLY, oil_prices=[{"date": "11.17", "dubai": "약 80", "brent": "81", "wti": "79"}])):
         with pytest.raises(weekly_word.WeeklyInputError):
             weekly_word.generate(broken, tmp_path / "w.docx")
         assert not (tmp_path / "w.docx").exists()

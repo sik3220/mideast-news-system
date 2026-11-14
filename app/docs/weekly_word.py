@@ -92,36 +92,41 @@ def _item_paragraph(proto, item: dict):
 
 
 def _fmt_price(value) -> str:
-    return f"${float(value):.2f}"
+    return f"${float(value):.2f}" if str(value or "").strip() else ""
 
 
 def check(data: dict) -> tuple[list[str], list[str]]:
     """(생성을 막는 오류, 경고). 통계 합계와 유가 설명의 방향을 입력값과 대조한다."""
     errors, warnings = [], []
     stats = data.get("stats") or {}
+    # 빈 칸은 생성을 막지 않는다(빈 채로 나가고 경고만 한다). 숫자가 아닌 값만 막는다.
+    blank = [label for key, label in STAT_FIELDS if str(stats.get(key) or "").strip() == ""]
+    if blank:
+        warnings.append(f"테러 통계 빈 칸 {len(blank)}곳 — 문서에도 빈 칸으로 들어감 (없으면 0 을 입력)")
     for key, label in STAT_FIELDS:
-        v = stats.get(key)
-        if v is None or str(v).strip() == "":
-            errors.append(f"테러 통계 ‘{label}’ 건수가 비어 있음 (없으면 0 을 입력)")
-        elif not str(v).strip().isdigit():
+        v = str(stats.get(key) or "").strip()
+        if v and not v.isdigit():
             errors.append(f"테러 통계 ‘{label}’ 는 0 이상의 정수여야 함")
-    if not (data.get("stats_basis") or "").strip():
-        warnings.append("테러 통계의 집계 근거가 기록되지 않음")
     prices = data.get("oil_prices") or []
     if not prices:
-        errors.append("유가 표에 날짜와 가격이 없음")
+        warnings.append("유가 표가 비어 있음 — 문서에도 빈 표로 들어감")
+    complete = bool(prices)
     for row in prices:
         if not (row.get("date") or "").strip():
-            errors.append("유가 표에 날짜가 빈 행이 있음")
+            warnings.append("유가 표에 날짜가 빈 행이 있음")
+            complete = False
         for key, label in OIL_FIELDS:
+            v = str(row.get(key) or "").strip()
+            if not v:
+                warnings.append(f"유가 {row.get('date') or '?'} ‘{label}’ 값이 비어 있음")
+                complete = False
+                continue
             try:
-                if float(row.get(key)) <= 0:
+                if float(v) <= 0:
                     raise ValueError
-            except (TypeError, ValueError):
-                errors.append(f"유가 {row.get('date') or '?'} ‘{label}’ 값이 비어 있거나 숫자가 아님")
-    if prices and not (data.get("oil_source") or "").strip():
-        warnings.append("유가 출처가 기록되지 않음")
-    if not errors and len(prices) >= 2:
+            except ValueError:
+                errors.append(f"유가 {row.get('date') or '?'} ‘{label}’ 값이 숫자가 아님")
+    if not errors and complete and len(prices) >= 2:
         warnings += _oil_direction_warnings(data.get("oil", ""), prices)
     for key, label in (("politics", "정치권 동향"), ("impact", "그룹 / 건설에 미치는 영향")):
         if not (data.get(key) or "").strip():
@@ -152,6 +157,14 @@ def stats_total(stats: dict) -> int:
     return sum(int(stats[k]) for k, _ in STAT_FIELDS)
 
 
+def _stats_total_text(stats: dict) -> str:
+    """모든 칸이 채워졌을 때만 합계를 적는다. 빈 칸이 있으면 합계도 비운다."""
+    try:
+        return str(stats_total(stats))
+    except (KeyError, ValueError, TypeError):
+        return ""
+
+
 def _find(children, text: str, start: int = 0) -> int:
     for i in range(start, len(children)):
         if children[i].tag == qn("w:p") and _text(children[i]).strip() == text:
@@ -180,8 +193,8 @@ def _replace_between(body, start_el, stop_el, new_elements, keep=lambda el: Fals
 
 
 def generate(data: dict, out_path: Path, template: Path | None = None) -> list[str]:
-    """data 키: period_start, period_end, report_date, politics, stats{}, stats_basis, terror, oil,
-    oil_prices[{date,dubai,brent,wti}], oil_source, intl[{title, body}], impact. 경고 목록을 돌려준다."""
+    """data 키: period_start, period_end, report_date, politics, stats{}, terror, oil,
+    oil_prices[{date,dubai,brent,wti}], intl[{title, body}], impact. 경고 목록을 돌려준다."""
     template = template or config.WEEKLY_TEMPLATE
     if not template.exists():
         raise FileNotFoundError(f"주간 Word 원본 양식이 없음: {template}")
@@ -232,12 +245,12 @@ def generate(data: dict, out_path: Path, template: Path | None = None) -> list[s
     _replace_between(body, ch[i_intl], ch[i_imp], intl_new)
 
     _replace_between(body, ch[i_oil], oil_tbl, items(data.get("oil", "")))
-    _fill_oil_table(oil_tbl, data["oil_prices"])
+    _fill_oil_table(oil_tbl, data.get("oil_prices") or [])
 
     # 테러 표 뒤의 빈 문단 2개는 원본 간격이므로 남긴다.
     _replace_between(body, stat_tbl, ch[i_eco], items(data.get("terror", "")),
                      keep=lambda el: el.tag == qn("w:p") and not _text(el).strip())
-    _fill_stats_table(stat_tbl, data["stats"])
+    _fill_stats_table(stat_tbl, data.get("stats") or {})
 
     _replace_between(body, ch[i_pol], ch[i_ter], items(data.get("politics", "")))
 
@@ -257,14 +270,16 @@ def _fill_stats_table(tbl, stats: dict) -> None:
     if header != expected:
         raise ValueError(f"테러 통계 표의 열이 원본과 다름: {header}")
     cells = rows[1].findall(qn("w:tc"))
-    _cell_set(cells[1], str(stats_total(stats)))
+    _cell_set(cells[1], _stats_total_text(stats))
     for i, (key, _) in enumerate(STAT_FIELDS):
-        _cell_set(cells[i + 2], str(int(stats[key])))
+        v = str(stats.get(key) or "").strip()
+        _cell_set(cells[i + 2], str(int(v)) if v else "")
 
 
 def _fill_oil_table(tbl, prices: list[dict]) -> None:
     rows = tbl.findall(qn("w:tr"))
     data_rows = rows[1:]
+    prices = prices or [{}, {}]                  # 가격을 안 넣었으면 원본처럼 두 줄을 빈 칸으로 둔다
     while len(data_rows) < len(prices):          # 행이 모자라면 마지막 행을 복제
         new = copy.deepcopy(data_rows[-1])
         data_rows[-1].addnext(new)
@@ -273,9 +288,9 @@ def _fill_oil_table(tbl, prices: list[dict]) -> None:
         tbl.remove(extra)
     for tr, row in zip(data_rows, prices):
         cells = tr.findall(qn("w:tc"))
-        _cell_set(cells[0], str(row["date"]).strip())
+        _cell_set(cells[0], str(row.get("date") or "").strip())
         for i, (key, _) in enumerate(OIL_FIELDS):
-            _cell_set(cells[i + 1], _fmt_price(row[key]))
+            _cell_set(cells[i + 1], _fmt_price(row.get(key)))
 
 
 def read_back(path: Path) -> dict:
