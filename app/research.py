@@ -55,6 +55,12 @@ RESEARCH_APPENDIX = """
 - **유가 기사**(국제유가 시황)는 예외다: 제목 줄에 `[등락의 원인]에 따른 [시장의 해석]으로 국제유가는 [전일 대비 상승/하락/혼조]` 한 문장만 쓰고, 하위 줄은 쓰지 않는다. 그날의 마감 결과만 쓰고, "N주 연속·주간 하락" 같은 기간 추세나 "set for / on track" 같은 전망을 결과처럼 쓰지 않는다. 가격 숫자($)와 등락률(%)은 쓰지 않는다(표에 따로 넣는다). TAG 는 유가.
 - 확정되지 않은 것은 확정처럼 쓰지 않는다(예정·추진·주장·보도를 구분).
 - 표기는 5절을 반드시 지킨다: 외국 인명·지명은 로마자 + 직함(Trump 대통령, Al-Zaidi 총리, Baghdad, Kirkuk州), 美-이란, 對이란. 정당·연합은 보고서 표기(시아조정기구, 법치국가연합, 재건발전연합, 사디쿤 운동).
+- 무엇을 뽑을지는 아래 <search_goals> 의 분야별 목표를 따른다. 목표에 해당하는 사실(새 지시·결정, 의결사항, 경계태세 변경, 체포, 송금·계약 진행 등)을 머리줄과 하위 줄의 우선순위로 삼는다.
+- **Trump 대통령의 발언**을 다루는 기사는 발언일과 발언 맥락(무엇에 대해 한 말인지)을 본문에서 확인해 쓴다. 다른 매체를 재인용한 기사라면 원 발언을 전한 보도를 우선 찾는다. 발언일을 확인하지 못했으면 CHECK 줄에 그렇게 적는다.
+
+<search_goals>
+{goals}
+</search_goals>
 
 마지막에 아래 형식으로만 답한다(다른 설명·머리말 없이, 줄마다 한 항목).
 
@@ -64,6 +70,7 @@ TITLE: 제목 줄 — "주체, 핵심행위 + 대상·결과". 날짜·출처·�
 SUB: 하위 항목 한 줄. 0~2개를 SUB: 줄 여러 개로 쓴다(없으면 SUB 줄을 쓰지 않는다). 반응·평가·전망은 "☞ "로 시작한다. 제목 줄을 되풀이하지 않는다
 TAG: 정치 | 치안 | 테러 | 경제 | 국제 | 유가 | 기타
 STAGE: 계획 | 협의 | 승인 | 체결 | 시행 | 완료 | 해당없음
+CHECK: 확인하지 못한 점이 있을 때만 한 줄로 쓴다(예: 발언일 미확인). 없으면 이 줄을 쓰지 않는다
 
 FOUND 가 none 이면 FOUND 줄만 쓴다.
 """
@@ -108,7 +115,8 @@ def request_research(article: dict, client) -> tuple[dict, dict]:
     response = None
     for _ in range(MAX_CONTINUATIONS + 1):
         response = _create(client, model, max_tokens=4000, output_config={"effort": "medium"},
-                           system=[{"type": "text", "text": config.style_guide_text() + RESEARCH_APPENDIX,
+                           system=[{"type": "text", "text": config.style_guide_text()
+                                    + RESEARCH_APPENDIX.replace("{goals}", config.search_goals_text()),
                                     "cache_control": {"type": "ephemeral"}}],
                            tools=tools, messages=messages)
         part = llm._usage(response, model, "research")
@@ -127,9 +135,9 @@ def request_research(article: dict, client) -> tuple[dict, dict]:
 
 
 def parse_reply(text: str) -> dict:
-    out = {"found": "none", "outlet": "", "title": "", "subs": [], "tag": "기타", "stage": "해당없음"}
+    out = {"found": "none", "outlet": "", "title": "", "subs": [], "tag": "기타", "stage": "해당없음", "check": ""}
     for line in text.splitlines():
-        m = re.match(r"\s*(FOUND|OUTLET|TITLE|SUB|TAG|STAGE)\s*:\s*(.*)$", line)
+        m = re.match(r"\s*(FOUND|OUTLET|TITLE|SUB|TAG|STAGE|CHECK)\s*:\s*(.*)$", line)
         if not m:
             continue
         key, value = m.group(1), m.group(2).strip()
@@ -172,6 +180,8 @@ def research_article(conn, article: dict, client=None) -> dict:
         return {"status": "not_found", "message": NOT_FOUND_FLAG}
     outlet = result["outlet"] or "매체 미상"
     flags = [f"원 기사가 아니라 같은 사건을 다룬 {outlet} 기사를 읽고 씀 — 원문과 대조"] if result["found"] == "other" else []
+    if result.get("check"):
+        flags.append(result["check"][:120])
     basis = f"{WEB_BASIS} ({outlet})"
     if result["tag"] == "유가":
         result["subs"] = []                                # 유가는 한 문장 형식(하위 줄 없음)

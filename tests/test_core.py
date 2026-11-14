@@ -742,3 +742,29 @@ def test_arabic_pm_title_alone_does_not_make_an_article_a_cabinet_meeting_item()
     assert ranking.match_topic("cabinet", speech, cfg) is None
     assert ranking.match_topic("cabinet", session, cfg) == "title"
     assert ranking.match_topic("cabinet", decision, cfg) == "title"
+
+
+def test_search_strategy_keywords_are_searched_and_regional_news_from_iraqi_outlets_is_not_iraqi(conn):
+    """담당자의 검색 전략 키워드가 검색어에 들어 있고, 이라크 매체가 전한 예멘·사우디 기사는 이라크 사안이 아니다."""
+    from app.config import topics_config, search_goals_text
+    cfg = topics_config()
+    queries = " ".join(s["q"] for s in cfg["searches"])
+    for kw in ("قرارات مجلس الوزراء", "القوات الأمنية", "الإنذار الأمني", "كتائب حزب الله", "الحشد الشعبي", "جرف الصخر", "اعتقال",
+               "تهريب", "هجوم إرهابي", "عبوة ناسفة", "جهاز مكافحة الإرهاب", "Trump", "IRGC", "Basmaya", "ملحق العقد",
+               "المستحقات المالية", "استئناف العمل", "هيئة الاستثمار الوطنية", "한화건설"):
+        assert kw in queries, kw
+    assert "내각회의 의결사항" in search_goals_text() and "실제 송금" in search_goals_text()
+    yemen = make_article(title="القوات المسلحة اليمنية تستهدف شركة أرامكو بطائرة مسيرة", source_name="Shafaq News",
+                         source_domain="shafaq.com", lang="ar")
+    pm = make_article(title="الزيدي يستقبل السفير الإيراني ويبحث معه العلاقات الثنائية", source_name="INA",
+                      source_domain="ina.iq", lang="ar")
+    assert ranking.classify(yemen, cfg)[1] == "걸프·사우디"
+    assert "iraq_attack" not in [t["id"] for t in ranking.match_themes(yemen, cfg)]
+    assert ranking.classify(pm, cfg)[1] == "이라크" and "pm_action" in [t["id"] for t in ranking.match_themes(pm, cfg)]
+    assert ranking.match_topic("bismayah", make_article(title="Basmaya housing units handed over"), cfg) == "title"
+    tunisia = make_article(title="الإطار التنسيقي بتونس يرفض مشروع قانون المالية 2027 ويدعو لمسيرة", source_name="الجزيرة",
+                           source_domain="aljazeera.net", lang="ar")
+    assert "parties" not in [t["id"] for t in ranking.match_themes(tunisia, cfg)]       # 다른 나라의 '조정기구'는 아니다
+    iraqi = make_article(title="الإطار التنسيقي يعقد اجتماعاً لبحث ملف حصر السلاح", source_name="Shafaq News",
+                         source_domain="shafaq.com", lang="ar")
+    assert "parties" in [t["id"] for t in ranking.match_themes(iraqi, cfg)]

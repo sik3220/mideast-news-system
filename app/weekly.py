@@ -275,6 +275,11 @@ WEEKLY_APPENDIX = """
 - 재료가 길면 위 기준에 맞게 **줄인다**. 재료의 하위 줄을 모두 옮기지 않는다. 다만 재료에 있는 금액·일정 같은 핵심 수치는 남긴다.
 - 표기는 5절을 반드시 지킨다: 외국 인명·지명은 로마자 + 직함(Trump 대통령, Al-Zaidi 총리, Baghdad, Kirkuk州), 美-이란, 對이란. 정당·연합은 보고서 표기(시아조정기구, 법치국가연합, 재건발전연합, 사디쿤 운동).
 - politics 에서는 정치권(정당·연합·지도자) 동향, 총리의 주요 조치·발언, 주택·건설 정책을 빠뜨리지 않는다.
+- 무엇을 살리고 뺄지는 아래 <search_goals> 의 분야별 목표를 따른다. 목표에 해당하는 사실을 우선 남긴다.
+
+<search_goals>
+{goals}
+</search_goals>
 
 ## 구역
 - politics: 이라크 국내 정치·정부·의회·경제 정책·비스마야/한화/NIC 관련. 날짜순.
@@ -301,7 +306,8 @@ def request_draft(mats: list[dict], prev_titles: list[str], client=None) -> tupl
     user = ("<previous_titles>\n" + "\n".join(prev_titles) + "\n</previous_titles>\n\n<materials>\n"
             + "\n".join(material_block(m) for m in mats) + f"\n</materials>\n\n위 재료 {len(mats)}건으로 주간 보고 초안을 엮는다.")
     response = llm._parse(client, model, max_tokens=16000, output_config={"effort": "high"},
-                          system=[{"type": "text", "text": config.style_guide_text() + WEEKLY_APPENDIX,
+                          system=[{"type": "text", "text": config.style_guide_text()
+                                   + WEEKLY_APPENDIX.replace("{goals}", config.search_goals_text()),
                                    "cache_control": {"type": "ephemeral"}}],
                           messages=[{"role": "user", "content": user}], output_format=WeeklyDraft)
     if response.stop_reason == "refusal":

@@ -115,6 +115,17 @@ def style_guide_text() -> str:
     return _style_cache[1]
 
 
+SEARCH_GOALS = ROOT / "config" / "search_goals.md"
+
+
+def search_goals_text() -> str:
+    """담당자의 분야별 검색 목표. 본문을 읽고 쓸 때와 주간 초안을 엮을 때 무엇을 우선 뽑을지의 기준이다."""
+    try:
+        return SEARCH_GOALS.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
 def soffice_path() -> str | None:
     return shutil.which("soffice") or shutil.which("libreoffice")
 

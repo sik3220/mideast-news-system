@@ -52,6 +52,27 @@ searches:
   - {lang: ar, q: '"وزارة الإعمار والإسكان" OR "وزير الإعمار والإسكان"'}
   - {lang: ar, q: 'العراق "المدن السكنية" OR "صندوق الإسكان" OR "المبادرة العقارية" OR "أزمة السكن" OR "المجمعات السكنية"'}
   - {lang: en, q: 'Iraq "Ministry of Construction and Housing" OR "housing fund" OR "residential cities" OR "housing crisis" OR "residential complexes"'}
+  # ── 사용자의 검색 전략(분야별 핵심 키워드)과 대조해 빠진 것을 채운 검색 ──
+  # [정치] 내각 의결사항
+  - {topic: cabinet, lang: ar, q: '"قرارات مجلس الوزراء" OR "مجلس الوزراء يقرر" OR "مجلس الوزراء يوافق" OR "مجلس الوزراء يصوت"'}
+  # [치안] 보안군·경계태세·병력 배치, 무장단체, Jurf al-Sakhar, 체포·밀수
+  - {lang: ar, q: 'العراق "القوات الأمنية" OR "الإنذار الأمني" OR "انتشار القوات" OR "حالة التأهب"'}
+  - {lang: ar, q: 'العراق "كتائب حزب الله" OR "الحشد الشعبي" OR "الفصائل المسلحة"'}
+  - {lang: ar, q: '"جرف الصخر" OR "جرف النصر"'}
+  - {lang: ar, q: 'العراق اعتقال OR تهريب OR "ضبط أسلحة" OR "منفذ حدودي"'}
+  - {lang: en, q: 'Iraq "security alert" OR deployment OR checkpoint OR "border crossing" OR "Jurf al-Sakhar" OR "Popular Mobilization Forces"'}
+  # [테러] 테러공격·폭발물·대테러청
+  - {lang: ar, q: 'العراق "هجوم إرهابي" OR "عبوة ناسفة" OR "جهاز مكافحة الإرهاب" OR "مكافحة الإرهاب"'}
+  - {lang: en, q: 'Iraq "terrorist attack" OR "explosive device" OR IED OR "Counter Terrorism Service" OR counterterrorism'}
+  # [국제] Trump 발언, 혁명수비대, 사우디–이라크 드론
+  - {lang: en, q: 'Trump Iran OR Iraq says OR warns OR statement OR "Truth Social"'}
+  - {lang: en, q: 'IRGC OR "Revolutionary Guard" Iran OR Iraq OR Hormuz'}
+  - {lang: en, q: 'Saudi Arabia Iraq drones OR drone OR airspace'}
+  # [비스마야 특별 검색] 표기 변형, 계약 부속합의·미지급금·공사 재개
+  - {topic: bismayah, lang: en, q: 'Basmaya OR Besmaya OR "Bismayah New City" OR "Bismaya New City"'}
+  - {topic: bismayah, lang: ar, q: 'بسماية "ملحق العقد" OR "المستحقات المالية" OR "استئناف العمل" OR هانوا'}
+  - {topic: bismayah, lang: ar, q: '"هيئة الاستثمار الوطنية" OR "الهيئة الوطنية للاستثمار" بسماية OR هانوا OR "المدينة السكنية"'}
+  - {topic: bismayah, lang: ko, q: '"한화건설" 이라크 OR "비스마야 신도시" OR "한화 비스마야"'}
   - {lang: en, q: 'Brent WTI oil prices'}
   - {lang: ko, q: '국제유가 두바이유 OR 브렌트유'}
 
@@ -67,7 +88,7 @@ topics:
   bismayah:
     label: 비스마야·한화·NIC
     # strong 은 단독으로 주제 일치. context 는 iraq_context 와 함께 있을 때만 일치로 본다.
-    strong: [비스마야, bismayah, bismaya, بسماية, "national investment commission", "الهيئة الوطنية للاستثمار", 국가투자위원회, bncp, "이라크 신도시"]
+    strong: [비스마야, bismayah, bismaya, basmaya, بسماية, "national investment commission", "الهيئة الوطنية للاستثمار", "هيئة الاستثمار الوطنية", 국가투자위원회, bncp, "이라크 신도시"]
     context: [한화, hanwha, هانوا, nic, 미수금]
   cabinet:
     label: 이라크 내각회의
@@ -83,7 +104,7 @@ topics:
     strong: [비스마야]
     context: [한화]
 
-iraq_context: [이라크, iraq, iraqi, العراق, العراقي, baghdad, 바그다드, بغداد, 비스마야, bismayah, bismaya, بسماية]
+iraq_context: [이라크, iraq, iraqi, العراق, العراقي, baghdad, 바그다드, بغداد, 비스마야, bismayah, bismaya, بسماية, الزيدي, "al-zaidi", zaidi, "الحشد الشعبي", كردستان, كوردستان, أربيل, اربيل, البصرة, الموصل, كركوك, الأنبار, ديالى, نينوى, "صلاح الدين", "ذي قار", النجف, كربلاء, anbar, diyala, nineveh]
 
 # 이라크 매체(이름·주소의 일부). 이라크 매체는 제목에 '이라크'를 쓰지 않는 일이 많으므로,
 # 이 매체의 기사는 제목에 이라크가 없어도 이라크 사안으로 본다(정치권·주택 정책 기사가 빠지지 않게).
@@ -102,12 +123,13 @@ categories:
   정치: [총리, 대통령, 의회, 내각, 정부, 선거, 장관, 법안, 정당, "prime minister", president, parliament, cabinet, government, election, minister, رئيس الوزراء, مجلس الوزراء, مجلس النواب, البرلمان, الحكومة, انتخابات]
 
 regions:
-  이라크: [이라크, iraq, العراق, baghdad, 바그다드, بغداد, 쿠르드, kurdistan, erbil, basra, mosul, kirkuk, 비스마야, bismayah, bismaya, بسماية]
-  이란: [이란, iran, إيران, tehran, 테헤란]
-  이스라엘·팔레스타인: [이스라엘, israel, 가자, gaza, 팔레스타인, palestin, إسرائيل, غزة]
-  걸프·사우디: [사우디, saudi, uae, 카타르, qatar, 쿠웨이트, kuwait, 호르무즈, hormuz, 걸프, gulf, 예멘, yemen, 후티, houthi]
-  시리아·레바논: [시리아, syria, 레바논, lebanon, 헤즈볼라, hezbollah, سوريا, لبنان]
-  튀르키예: [튀르키예, 터키, turkey, türkiye, turkiye]
+  # 아랍어 낱말도 넣는다. 이라크 매체가 전하는 역내 보도(예멘·사우디 등)를 이라크 사안으로 잘못 보지 않기 위해서다.
+  이라크: [이라크, iraq, العراق, baghdad, 바그다드, بغداد, 쿠르드, kurdistan, erbil, basra, mosul, kirkuk, 비스마야, bismayah, bismaya, بسماية, الزيدي, "al-zaidi", zaidi, "الحشد الشعبي", كردستان, كوردستان, أربيل, اربيل, البصرة, الموصل, كركوك, الأنبار, ديالى, نينوى, "صلاح الدين", "ذي قار", النجف, كربلاء, anbar, diyala, nineveh]
+  이란: [이란, iran, إيران, ايران, tehran, 테헤란, طهران]
+  이스라엘·팔레스타인: [이스라엘, israel, 가자, gaza, 팔레스타인, palestin, إسرائيل, اسرائيل, غزة, فلسطين]
+  걸프·사우디: [사우디, saudi, uae, 카타르, qatar, 쿠웨이트, kuwait, 호르무즈, hormuz, 걸프, gulf, 예멘, yemen, 후티, houthi, السعودية, اليمن, الحوثي, أرامكو, ارامكو, قطر, الكويت, الإمارات, هرمز]
+  시리아·레바논: [시리아, syria, 레바논, lebanon, 헤즈볼라, hezbollah, سوريا, سورية, دمشق, لبنان]
+  튀르키예: [튀르키예, 터키, turkey, türkiye, turkiye, تركيا]
 
 # 구체적인 결정·시행을 나타내는 표현 (가점). 계획·협의 표현은 가점하지 않는다.
 decision_words: [의결, 승인, 체결, 서명, 지급, 완료, 시행, 결정, 발효, 취소, approve, approved, signed, signs, paid, decision, decides, ratif, cancels, cancelled, يوافق, يقر, توقيع, صرف, قرار]
@@ -127,23 +149,24 @@ wire_names: [연합뉴스, 뉴시스, 뉴스1, reuters, afp, "associated press",
 themes:
   # 위에 있을수록 구역을 정할 때 먼저 본다(이라크 사안이 역내 사안보다 앞).
   - {id: is_ops, label: IS 관련 작전·사건, needs_iraq: true, bonus: 22, section: 테러,
-     words: [isis, isil, daesh, "islamic state", 은신처, hideout, داعش, مضافة, الدواعش]}
+     words: [isis, isil, daesh, "islamic state", 은신처, hideout, داعش, مضافة, الدواعش, "terrorist attack", "هجوم إرهابي", "عبوة ناسفة", "explosive device"]}
   - {id: energy_infra, label: 에너지 시설·전력, needs_iraq: true, bonus: 15, section: 치안,
      words: ["khor mor", "khormor", kormor, "gas field", 가스전, "power outage", "power loss", كورمور, خورمور, "خور مور", "حقل غاز"]}
   - {id: arms_control, label: 무장단체 무기통제, needs_iraq: true, bonus: 18, section: 정치,
      words: [disarm, 무기통제, "무기 통제", "rogue arms", "weapons row", "arms control", "حصر السلاح", "نزع السلاح"]}
   - {id: militia, label: 무장단체 동향, needs_iraq: true, bonus: 15,
-     words: [무장단체, 민병대, "kataib", "kata'ib", hezbollah, pmf, "popular mobilization", militia, militias, الفصائل, "الحشد الشعبي", "كتائب حزب الله"]}
+     words: [무장단체, 민병대, "kataib", "kata'ib", hezbollah, pmf, "popular mobilization", militia, militias, الفصائل, "الحشد الشعبي", "كتائب حزب الله", "jurf al-sakhar", "jurf al-sakhr", "jurf al-nasr", "جرف الصخر", "جرف النصر"]}
   - {id: iraq_attack, label: 이라크 내 공격·요격, needs_iraq: true, bonus: 15, section: 치안,
      words: ["green zone", 그린존, "المنطقة الخضراء", embassy, 대사관, السفارة, "drone attack", "rocket attack", intercept, 요격, 로켓, "طائرة مسيرة", مسيّرة, صاروخ, اعتراض, "roadside bomb", ied, عبوة, assassinat, 암살, اغتيال, kidnap, 납치, grenade, 수류탄, explosion, blast, 폭발, انفجار, "alert level", "highest alert", "on alert", "high alert", 경계태세, تأهب, استنفار]}
   - {id: iraq_protest, label: 시위·소요, needs_iraq: true, bonus: 10, section: 치안,
      words: [tahrir, 시위, protests, protesters, demonstrat, "civil disobedience", تظاهرات, احتجاج, "ساحة التحرير", العصيان]}
   - {id: security_ops, label: 보안당국 발표, needs_iraq: true, bonus: 8,
-     words: [수색작전, 대테러, "counter-terrorism", "counterterrorism", "خلية الإعلام الأمني", "مكافحة الإرهاب"]}
+     words: [수색작전, 대테러, "counter-terrorism", "counterterrorism", "counter terrorism service", "خلية الإعلام الأمني", "مكافحة الإرهاب", "جهاز مكافحة الإرهاب",
+             "القوات الأمنية", "الإنذار الأمني", "انتشار القوات", "حالة التأهب", "security alert", checkpoint, 검문소, "منفذ حدودي", "ضبط أسلحة", اعتقال, "arrested"]}
   - {id: krg, label: KRG–중앙정부, needs_iraq: true, bonus: 15, section: 정치,
      words: [krg, barzani, "kurdistan region", 쿠르드 자치정부, 쿠르디스탄, "budget share", "إقليم كردستان", بارزاني, "حصة الإقليم"]}
   # 정치권(정당·연합·지도자) 동향. 보고서 '정치권 동향'의 중심이라 가점을 높게 준다.
-  - {id: parties, label: 정치권·정당 동향, needs_iraq: false, bonus: 20, cap: 4, section: 정치,
+  - {id: parties, label: 정치권·정당 동향, needs_iraq: true, bonus: 20, cap: 4, section: 정치,
      words: ["coordination framework", 시아조정기구, 조정기구, "الإطار التنسيقي", "state of law", 법치국가연합, "دولة القانون", maliki, 말리키, المالكي,
              "reconstruction and development", 재건발전연합, "الإعمار والتنمية", sudani, 수다니, السوداني, sadiqoun, 사디쿤, صادقون, "asaib ahl", "asa'ib", عصائب, khazali, الخزعلي,
              "hikma", "تيار الحكمة", "al-hakim", الحكيم, "badr organization", "منظمة بدر", amiri, العامري, sadrist, "al-sadr", 사드르, "التيار الصدري", "مقتدى الصدر",

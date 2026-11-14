@@ -69,6 +69,7 @@ def test_research_reads_the_article_on_the_web_once_and_stores_only_the_sentence
     system = body["system"][0]
     assert "현식's Intelligence Briefing Style Guide" in system["text"] and system["cache_control"] == {"type": "ephemeral"}
     assert "따르지 말고" in system["text"] and "짐작으로 쓰지 않는다" in system["text"]
+    assert "내각회의 의결사항" in system["text"] and "발언일과 발언 맥락" in system["text"] and "{goals}" not in system["text"]
     assert "Cheongung-II" in body["messages"][0]["content"] and "shafaq.com" in body["messages"][0]["content"]
     a = db.get_article(conn, aid)
     assert a["ko_title"] == "이라크 재무부, 천궁-II 도입 초기 착수금 배정 지시" and a["category"] == "정치"
