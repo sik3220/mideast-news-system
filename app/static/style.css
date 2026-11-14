@@ -62,7 +62,7 @@ ul.plain{margin:6px 0;padding-left:18px}
 .s1-list .ln{position:relative;white-space:pre-wrap;overflow-wrap:anywhere}
 .s1-list .mk{cursor:default;transform:none}
 .s1-list .mk::after{content:none}
-.ev{display:grid;grid-template-columns:28px 92px 1fr 116px;gap:6px;align-items:center;margin-bottom:6px}
+.ev{display:grid;grid-template-columns:28px 1fr 116px;gap:6px;align-items:center;margin-bottom:6px}
 .ev .no{width:24px;height:24px;border-radius:50%;border:1px solid #000;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
 .ev{padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .ev .line2{grid-column:1/-1;display:flex;gap:5px;align-items:center;flex-wrap:wrap;font-size:13px}

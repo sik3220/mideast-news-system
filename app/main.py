@@ -36,7 +36,9 @@ def render(request: Request, name: str, **ctx):
     ctx.update(demo=config.demo_mode(), llm_ready=config.llm_configured(), llm_model=config.llm_model(),
                topics={k: v["label"] for k, v in cfg["topics"].items()}, categories=CATEGORIES,
                regions=list(cfg["regions"]) + ["기타 중동"], lang_names=LANG_NAMES,
-               preview_ready=preview.available())
+               preview_ready=preview.available(),
+               # 화면 파일을 고치면 주소가 바뀌어 브라우저가 옛 파일을 쓰지 않는다.
+               static_ver=int(max((BASE / "static" / f).stat().st_mtime for f in ("style.css", "app.js"))))
     return templates.TemplateResponse(request, name, ctx)
 
 

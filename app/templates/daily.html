@@ -28,8 +28,8 @@
     <div>
       <div id="events"></div>
       <button type="button" id="add-event">사건 추가</button>
-      <p class="hint">번호는 목록 순서대로 자동으로 붙고, 지도 표식과 목록 표식에 같은 번호가 들어갑니다.
-        문장은 원본처럼 “지역, 내용” 형태로 씁니다(예: Kirkuk州, …). 시각은 비워 둘 수 있습니다.</p>
+      <p class="hint">한 줄에 <b>시각 지역, 내용</b> 순서로 쓰면 됩니다(예: 08:49 Kirkuk州, IS 수색작전 실시). 시각은 없어도 됩니다.
+        지역명을 알아보면 지도 표식을 그 州에 먼저 놓고, 문장으로 유형(테러상황/대테러작전)을 고릅니다. 둘 다 틀리면 바로 고칠 수 있습니다.</p>
       <label>사건이 없는 날 목록 상자에 넣을 문구
         <input type="text" name="no_event_text" value="{{ data.no_event_text }}"></label>
     </div>
@@ -96,19 +96,31 @@ const box = document.getElementById('events'), map = document.getElementById('ma
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fill = t => '#' + COLORS[t] + '80';
 
+const norm = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+const lineOf = e => [e.time, e.text].map(x => (x || '').trim()).filter(Boolean).join(' ');
+const statusOf = e => e.x == null ? '<b style="color:#a12626">위치 미지정</b>' : (e.autoPlace ? '위치 자동(州 기준) — 끌어서 조정' : '위치 지정됨');
+events.forEach(e => { e.typeManual = true; });          // 저장된 편집본의 유형은 자동으로 바꾸지 않는다
+// 한 줄 입력을 시각·문장으로 나누고, 지역명으로 표식 위치를, 낱말로 유형을 먼저 채운다.
+function applyLine(e, value) {
+  const m = value.match(/^\s*(\d{1,2}:\d{2})\s*(.*)$/);
+  e.time = m ? m[1].padStart(5, '0') : ''; e.text = m ? m[2] : value;
+  const head = norm(e.text.split(/[,，、]/)[0]);
+  const key = head && Object.keys(KNOWN).find(k => norm(k) === head);
+  if (key && (e.x == null || e.autoPlace) && e.place !== key) { e.place = key; Object.assign(e, KNOWN[key]); e.autoPlace = true; }
+  if (!e.typeManual) e.type = /작전|체포|검거|사살|수색|소탕|압수|공습|해체|적발/.test(e.text) ? 'counter' : 'terror';
+}
 function render() {
   box.innerHTML = events.map((e, i) => `
     <div class="ev" data-i="${i}">
       <span class="no" style="background:${fill(e.type)}">${i + 1}</span>
-      <input type="time" value="${esc(e.time)}" data-f="time" aria-label="사건 ${i + 1} 시각">
-      <input type="text" value="${esc(e.text)}" data-f="text" placeholder="지역, 내용" aria-label="사건 ${i + 1} 문장">
+      <input type="text" value="${esc(lineOf(e))}" data-f="line" placeholder="08:49 Kirkuk州, IS 수색작전 실시" aria-label="사건 ${i + 1} 문장">
       <select data-f="type" aria-label="사건 ${i + 1} 유형">${Object.entries(TYPES).map(([k, v]) =>
         `<option value="${k}" ${e.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <div class="line2">
         <input type="text" value="${esc(e.day)}" data-f="day" placeholder="날짜(합본용, 예: 11.12)" style="flex:0 0 150px" aria-label="사건 ${i + 1} 날짜">
         <input type="text" value="${esc(e.place)}" data-f="place" placeholder="지역명 (위치 기억용)" list="places" aria-label="사건 ${i + 1} 지역명">
         <button type="button" data-act="arm">${arming === i ? '지도를 클릭하세요…' : '지도에서 위치 지정'}</button>
-        <span>${e.x == null ? '<b style="color:#a12626">위치 미지정</b>' : '위치 지정됨'}</span>
+        <span data-status>${statusOf(e)}</span>
         ${KNOWN[e.place] && e.x == null ? '<button type="button" data-act="recall">기억한 위치 사용</button>' : ''}
         <button type="button" data-act="up" ${i === 0 ? 'disabled' : ''} aria-label="위로">↑</button>
         <button type="button" data-act="down" ${i === events.length - 1 ? 'disabled' : ''} aria-label="아래로">↓</button>
@@ -158,13 +170,20 @@ function drawMarkers() {
     map.appendChild(m);
   });
 }
-const pos = ev => { const r = map.getBoundingClientRect();
+const pos = ev => { const r = map.querySelector('img').getBoundingClientRect();   // 그림(=슬라이드) 기준 비율
   return {x: Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height))}; };
 
 box.addEventListener('input', ev => {
   const row = ev.target.closest('.ev'); if (!row || !ev.target.dataset.f) return;
-  events[+row.dataset.i][ev.target.dataset.f] = ev.target.value;
-  if (ev.target.dataset.f === 'type') render(); else drawSlideText();
+  const e = events[+row.dataset.i], f = ev.target.dataset.f;
+  if (f === 'line') {
+    applyLine(e, ev.target.value);                       // 입력 칸은 다시 그리지 않는다(커서 유지)
+    row.querySelector('select').value = e.type; row.querySelector('[data-f=place]').value = e.place || '';
+    row.querySelector('.no').style.background = fill(e.type); row.querySelector('[data-status]').innerHTML = statusOf(e);
+    drawMarkers(); return;
+  }
+  e[f] = ev.target.value;
+  if (f === 'type') { e.typeManual = true; render(); } else drawSlideText();
 });
 document.querySelectorAll('[name=date_to],[name=no_event_text]').forEach(el => el.addEventListener('input', drawSlideText));
 if (map && L) { map.style.setProperty('--mk-w', pct(L.marker.w)); map.style.setProperty('--mk-h', pct(L.marker.h));
@@ -177,19 +196,19 @@ box.addEventListener('click', ev => {
   if (act === 'up') [events[i - 1], events[i]] = [events[i], events[i - 1]];
   if (act === 'down') [events[i + 1], events[i]] = [events[i], events[i + 1]];
   if (act === 'arm') arming = arming === i ? null : i;
-  if (act === 'recall') Object.assign(events[i], KNOWN[events[i].place]);
+  if (act === 'recall') { Object.assign(events[i], KNOWN[events[i].place]); events[i].autoPlace = false; }
   render();
 });
 document.getElementById('add-event').addEventListener('click', () => {
   events.push({time: '', day: '', place: '', text: '', type: 'terror'}); render();
-  box.querySelector('.ev:last-of-type input[data-f=text]')?.focus();
+  box.querySelector('.ev:last-of-type input[data-f=line]')?.focus();
 });
 if (map) {
   let drag = null;
   map.addEventListener('pointerdown', ev => {
     const m = ev.target.closest('.mk');
-    if (m) { drag = +m.dataset.i; map.setPointerCapture(ev.pointerId); ev.preventDefault(); return; }
-    if (arming !== null) { Object.assign(events[arming], pos(ev)); arming = null; render(); }
+    if (m) { drag = +m.dataset.i; events[drag].autoPlace = false; map.setPointerCapture(ev.pointerId); ev.preventDefault(); return; }
+    if (arming !== null) { Object.assign(events[arming], pos(ev)); events[arming].autoPlace = false; arming = null; render(); }
   });
   map.addEventListener('pointermove', ev => { if (drag !== null) { Object.assign(events[drag], pos(ev)); drawMarkers(); } });
   map.addEventListener('pointerup', () => { if (drag !== null) { drag = null; render(); } });

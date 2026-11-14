@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}이라크·중동 뉴스{% endblock %}</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{ static_ver }}">
 </head>
 <body>
 <header class="top">
@@ -22,7 +22,7 @@
 {% if msg %}<div class="msg" role="status">{{ msg }}</div>{% endif %}
 {% block body %}{% endblock %}
 </main>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ static_ver }}"></script>
 {% block script %}{% endblock %}
 </body>
 </html>
