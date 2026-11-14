@@ -103,7 +103,8 @@ def test_draft_without_materials_or_key_does_not_call_claude(conn, monkeypatch):
 def test_untranslated_materials_are_put_into_report_style(conn, monkeypatch):
     """지난 날짜의 '추천만' 재료는 번역된 적이 없을 수 있다. 재료 목록을 열면 한꺼번에 옮긴다."""
     monkeypatch.delenv("LLM_MODEL", raising=False)
-    _, other = _seed(conn)
+    picked, other = _seed(conn)
+    conn.execute("UPDATE articles SET summary_ver=? WHERE id=?", (weekly.llm.SUMMARY_VERSION, picked))   # 이미 정리된 기사
     before = {m["article_id"]: m for m in weekly.materials(conn, dict(WEEK)) if m.get("article_id")}
     assert before[other]["needs"] and "budget draft law" in before[other]["head"]
     seen = {}

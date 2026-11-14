@@ -727,7 +727,8 @@ async def api_weekly_enrich(request: Request):
     finally:
         _enrich_lock.release()
     return JSONResponse({"status": "done", "changed": total["ok"], "failed": total["failed"],
-                         "over_budget": bool(total.get("over_budget"))})
+                         "over_budget": bool(total.get("over_budget")), "error": total.get("first_error") or "",
+                         "unconfigured": bool(total.get("unconfigured"))})
 
 
 @app.post("/weekly/upload")

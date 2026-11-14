@@ -371,7 +371,7 @@ def test_view_is_summarized_once_and_missing_items_are_reported(conn):
     fake = FakeLLM(drop_titles=("BROKEN",))
     total = enrich.enrich_view(conn, "2026-11-10", "2026-11-10", {}, False, client=fake)
     assert (total["ok"], total["failed"]) == (6, 1) and "빠져" in total["first_error"]
-    assert fake.summary_calls == 1                        # 7건을 한 번의 호출로 보냈다
+    assert fake.summary_calls == 2                        # 7건을 한 번에 보내고, 빠진 1건만 따로 한 번 더 보냈다
     shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
     assert sum(a["ko_title"] is not None and a["ko_title"].startswith("요약: ") for a in shown) == 6
     assert next(a for a in shown if "BROKEN" in a["title"])["summary_status"] == "failed"
@@ -387,7 +387,8 @@ def test_a_failed_call_fails_only_its_own_batch(conn, monkeypatch):
     db.upsert_article(conn, make_article("https://example.com/bad", "Iraq oil BROKEN item"))
     pipeline.recompute(conn)
     counts = llm.summarize_batch(conn, db.all_articles(conn), FakeLLM(fail_titles=("BROKEN",)))
-    assert counts["calls"] == 2 and counts["ok"] == 3 and counts["failed"] == 3 and "TimeoutError" in counts["first_error"]
+    # 묶음 2회 + 실패한 묶음의 3건을 한 건씩 재시도: 고장 난 1건만 실패로 남고 나머지 2건은 살아난다.
+    assert counts["calls"] == 5 and counts["ok"] == 5 and counts["failed"] == 1 and "TimeoutError" in counts["first_error"]
 
 
 def test_same_event_articles_are_merged_and_slot_is_refilled(conn):

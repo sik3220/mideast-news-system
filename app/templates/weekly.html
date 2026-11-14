@@ -199,7 +199,8 @@ if (working) {
         if (d.changed && !d.failed && !dirty) { location.reload(); return; }
         const done = d.changed ? `${d.changed}건을 정리했습니다. 편집본을 저장한 뒤 새로 고치면 한국어 문장으로 보입니다. ` : '';
         if (d.over_budget) show(done + '오늘 자동 번역 한도(.env 의 DAILY_BUDGET_USD)에 도달해 나머지는 정리하지 못했습니다.', false);
-        else if (d.failed) { working.classList.add('failed'); show(done + `${d.failed}건은 정리하지 못했습니다(번역 전으로 남습니다).`, true); }
+        else if (d.failed) { working.classList.add('failed'); show(done + `${d.failed}건은 정리하지 못했습니다(번역 전으로 남습니다). 원인: ${d.error || '알 수 없음'}`, true); }
+        else if (d.status === 'unconfigured' || d.unconfigured) show('ANTHROPIC_API_KEY 가 없어 정리할 수 없습니다.', false);
         else if (d.status === 'busy') show('다른 창에서 정리하는 중입니다. 잠시 뒤 새로 고치세요.', true);
         else show(done || '정리할 재료가 없습니다.', false);
       }).catch(() => { working.classList.add('failed'); show('정리 요청이 실패했습니다.', true); });

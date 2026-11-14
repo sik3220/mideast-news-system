@@ -121,3 +121,45 @@ def test_pasted_body_goes_to_the_body_model_and_is_not_stored(tmp_path, monkeypa
     assert llm.summarize_with_body(conn, a, "x" * (llm.MAX_BODY_CHARS + 1), client)[0] == "too_long"
     assert llm.summarize_with_body(conn, a, "  ", client)[0] == "empty"
     conn.close()
+
+
+def test_articles_missing_from_a_batch_reply_are_retried_one_by_one_with_a_stronger_model(conn, monkeypatch):
+    """묶음 응답에서 빠진 기사는 한 건씩 한 단계 위 모델로 다시 보내, 원문 제목으로 남지 않게 한다."""
+    from app import db
+    for k in ("LLM_MODEL", "LLM_GROUP_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    ids = [db.upsert_article(conn, make_article(url=f"https://example.com/{i}", title=f"Iraq headline number {i} about budget"))[0]
+           for i in range(2)]
+    calls = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            req = json.loads(self.rfile.read(int(self.headers["content-length"])))
+            calls.append(req["model"])
+            wanted = [i for i in ids if f'<article id="{i}">' in req["messages"][0]["content"]]
+            # 첫 묶음 호출은 첫 기사만 돌려주고, 한 건짜리 재시도는 그 기사를 돌려준다.
+            give = wanted[:1] if len(wanted) > 1 else wanted
+            reply = {"items": [dict(ITEM, id=i, title=f"이라크 예산 관련 제목 {i}") for i in give]}
+            body = json.dumps({"id": "m", "type": "message", "role": "assistant", "model": req["model"],
+                               "content": [{"type": "text", "text": json.dumps(reply, ensure_ascii=False)}],
+                               "stop_reason": "end_turn", "stop_sequence": None,
+                               "usage": {"input_tokens": 100, "output_tokens": 20}}).encode()
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    client = anthropic.Anthropic(api_key="k", base_url=f"http://127.0.0.1:{server.server_port}", max_retries=0)
+    try:
+        counts = llm.summarize_batch(conn, [db.get_article(conn, i) for i in ids], client)
+    finally:
+        server.shutdown()
+    assert counts["ok"] == 2 and counts["failed"] == 0
+    assert calls == ["claude-haiku-5-5", "claude-sonnet-5-5"]                  # 묶음 1회 + 빠진 기사 재시도 1회
+    assert all(db.get_article(conn, i)["ko_title"] for i in ids)

@@ -21,6 +21,7 @@ from .timeutil import iso, now_utc, today_baghdad
 
 BATCH_SIZE = 10            # 한 번의 호출에 보내는 기사 수
 MAX_PER_BATCH = 30         # 한 번 실행에서 요약하는 기사 수 상한
+MAX_RETRY_SINGLES = 10     # 묶음 호출에서 실패한 기사를 한 건씩 다시 보내는 상한(한 번 실행당)
 WORKERS = 3
 TIMEOUT_SECONDS = 120
 TAGS = ("정치", "치안", "테러", "경제", "국제", "유가")
@@ -300,6 +301,7 @@ def summarize_batch(conn, articles: list[dict], client=None, limit: int = MAX_PE
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         results = list(pool.map(run, chunks))
+    outcome: dict[int, object] = {}
     for chunk, result in zip(chunks, results):
         counts["calls"] += 1
         if isinstance(result, Exception):
@@ -309,10 +311,37 @@ def summarize_batch(conn, articles: list[dict], client=None, limit: int = MAX_PE
             record_usage(conn, usage)
             error = RuntimeError("응답에 이 기사가 빠져 있음")
         for a in chunk:
-            status = _store(conn, a, summaries.get(a["id"], error))
-            counts[status] += 1
-            if status == "failed" and not counts["first_error"]:
-                counts["first_error"] = f"{type(error).__name__}: {str(error)[:160]}"
+            outcome[a["id"]] = summaries.get(a["id"], error)
+
+    # 묶음 호출이 실패했거나 응답에서 빠진 기사는 한 건씩 다시 보낸다. 한 기사 때문에 묶음 전체가 거절·실패하는 일이 있고
+    # (값싼 모델은 거절 시 대체 모델이 없다), 그대로 두면 그 기사들이 계속 원문 제목으로 남는다. 재시도는 한 단계 위 모델로 한다.
+    retry = [a for a in todo if isinstance(outcome[a["id"]], Exception)][:MAX_RETRY_SINGLES]
+
+    def run_single(a):
+        try:
+            return request_summaries([a], client, edits_text, model=config.llm_group_model())
+        except Exception as e:
+            return e
+
+    if retry:
+        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+            singles = list(pool.map(run_single, retry))
+        for a, result in zip(retry, singles):
+            counts["calls"] += 1
+            if isinstance(result, Exception):
+                outcome[a["id"]] = result
+                continue
+            summaries, usage = result
+            record_usage(conn, dict(usage, purpose="summary_retry"))
+            if a["id"] in summaries:
+                outcome[a["id"]] = summaries[a["id"]]
+
+    for a in todo:
+        result = outcome[a["id"]]
+        status = _store(conn, a, result)
+        counts[status] += 1
+        if status == "failed" and not counts["first_error"]:
+            counts["first_error"] = f"{type(result).__name__}: {str(result)[:160]}"
     conn.commit()
     return counts
 
