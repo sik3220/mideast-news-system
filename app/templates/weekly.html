@@ -27,9 +27,6 @@
 
 <section class="panel">
   <h2 class="sec">① 이번 주 재료 <span class="meta">— 체크한 것만 초안에 들어갑니다 (<span id="mat-count"></span>)</span></h2>
-  <p class="hint"><span class="tag d-full">본문 읽음</span><span class="tag d-full">일일 문장</span> 은 세부 내용이 있는 재료이고,
-    <span class="tag d-title">제목만</span> 은 기사 제목만 옮긴 것입니다. <b>제목만인 재료는 체크하면 Claude가 본문을 찾아 읽어 세부 내용을 채웁니다</b>{% if research_max %}(하루 {{ research_max }}건까지){% endif %}.
-    일일 문장과 직접 선택한 기사는 처음부터 체크되어 있고, 시스템이 추천만 한 기사는 꺼져 있습니다. 목록에 없는 사안은 추천 기사 화면의 ‘직접 항목 추가’로 넣습니다.</p>
   {% if pending and llm_ready %}<div class="working" id="mat-working" role="status" data-start="{{ start }}">
     <span class="dot"></span> 원문 제목 그대로인 재료 {{ pending }}건을 보고서 문체로 정리하고 있습니다. 끝나면 목록이 바뀝니다.</div>{% endif %}
   {% if materials %}

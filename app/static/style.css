@@ -137,6 +137,5 @@ details.basis{margin-top:10px;font-size:14px}details.basis summary{cursor:pointe
 .mat .rs{display:block;margin-left:12px}
 .tag.d-full{background:#e2f1e6;color:#1d5a32}.tag.d-title{background:var(--chip);color:var(--muted)}
 .tag.d-raw{background:transparent;color:var(--muted);border:1px dashed #b9b6ad}
-.hint .tag{font-size:12px;border-radius:4px;padding:0 6px;margin-right:4px;white-space:nowrap}
 .item .tag.d-full{background:#e2f1e6;color:#1d5a32}
 .mat .mtext{unicode-bidi:isolate}.mat .msrc{color:var(--muted);font-size:13px;white-space:nowrap}
