@@ -28,23 +28,26 @@
 <section class="panel">
   <h2 class="sec">① 이번 주 재료 <span class="meta">— 체크한 것만 초안에 들어갑니다 (<span id="mat-count"></span>)</span></h2>
   <p class="hint">일일 PPT에 실은 문장과 선택한 기사는 처음부터 체크되어 있고, ‘추천만’은 꺼져 있습니다.
-    일일에 빠졌지만 주간에 넣을 것은 체크하고, 일일에 실었지만 뺄 것은 체크를 푸세요. 목록에 없는 사안은 추천 기사 화면의 ‘직접 항목 추가’로 넣습니다.</p>
+    보고서를 쓰는 순서(정치 → 치안·테러 → 유가 → 국제)대로 나뉘어 있고, 구역 안에서는 날짜순입니다. 일일에 빠졌지만 주간에 넣을 것은 체크하고, 일일에 실었지만 뺄 것은 체크를 푸세요. 목록에 없는 사안은 추천 기사 화면의 ‘직접 항목 추가’로 넣습니다.</p>
   {% if pending and llm_ready %}<div class="working" id="mat-working" role="status" data-start="{{ start }}">
     <span class="dot"></span> 원문 제목 그대로인 재료 {{ pending }}건을 보고서 문체로 정리하고 있습니다. 끝나면 목록이 바뀝니다.</div>{% endif %}
   {% if materials %}
   <div class="mats">
-    {% for day, group in materials|groupby('day') %}
-    <h3 class="sub">{{ day|md }}</h3>
+    {% for sec in sections %}{% set group = materials|selectattr('section', 'equalto', sec)|list %}{% if group %}
+    <h3 class="sub">{{ sec }} <span class="meta">{{ group|length }}건</span>
+      <button type="button" class="mini" data-all="1">모두 체크</button><button type="button" class="mini" data-all="0">모두 해제</button></h3>
+    <div class="matsec">
     {% for m in group %}
     <label class="mat {{ m.origin }}">
       <input type="checkbox" name="mat" value="{{ m.key }}" {{ 'checked' if m.on }}>
       <input type="hidden" name="mat_all" value="{{ m.key }}">
-      <span><span class="tag {{ m.origin }}">{{ m.label }}</span>{% if m.origin in ('selected', 'recommended') %}<span class="tag plain">{{ m.basis }}</span>{% endif %}
+      <span><b class="mday">{{ m.day|md }}</b><span class="tag {{ m.origin }}">{{ m.label }}</span>{% if m.origin in ('selected', 'recommended') %}<span class="tag plain">{{ m.basis }}</span>{% endif %}
         <span dir="auto">{{ m.head }}</span>
         {% for s in m.subs %}<span class="msub">{{ s }}</span>{% endfor %}</span>
     </label>
     {% endfor %}
-    {% endfor %}
+    </div>
+    {% endif %}{% endfor %}
   </div>
   {% else %}<p class="empty">이 기간의 재료가 없습니다. 일일 PPT를 저장하거나, 추천 기사에서 기사를 선택하거나, 아래에서 일일 PPT 파일을 올리세요.</p>{% endif %}
   <div class="row" style="margin-top:10px">
@@ -187,6 +190,10 @@ if (working) {
 const mats = [...document.querySelectorAll('input[name=mat]')];
 const count = () => { const el = document.getElementById('mat-count'); if (el) el.textContent = `${mats.filter(m => m.checked).length} / ${mats.length}건`; };
 mats.forEach(m => m.addEventListener('change', count)); count();
+document.querySelectorAll('.mats button[data-all]').forEach(b => b.addEventListener('click', () => {
+  b.closest('h3').nextElementSibling.querySelectorAll('input[name=mat]').forEach(i => { i.checked = b.dataset.all === '1'; });
+  count();
+}));
 document.getElementById('draft-btn').addEventListener('click', ev => {
   const written = [...document.querySelectorAll('[name=politics],[name=terror],[name=oil],[name=intl_body]')].some(t => t.value.trim());
   if (written && !confirm('아래 칸에 이미 쓴 내용이 초안으로 바뀝니다. 계속할까요?\n(만든 뒤 "되돌리기"로 복구할 수 있습니다)')) ev.preventDefault();

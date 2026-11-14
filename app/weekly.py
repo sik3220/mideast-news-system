@@ -20,6 +20,16 @@ MAX_RECOMMENDED = 30           # '추천만' 재료로 보여줄 최대 건수
 MAX_UPLOAD_BYTES = 30_000_000
 ORIGIN_LABELS = {"daily": "일일에 실음", "upload": "올린 일일 PPT", "selected": "선택함", "recommended": "추천만"}
 SECURITY_TAGS = ("치안", "테러")
+# 주간 보고서를 쓰는 순서. 재료 목록도 이 순서의 구역으로 나눠 보여준다.
+SECTIONS = ("정치·경제", "치안·테러", "유가", "국제")
+
+
+def _section(tag: str, region: str = "이라크") -> str:
+    if tag == "유가":
+        return "유가"
+    if tag == "국제" or region != "이라크":
+        return "국제"
+    return "치안·테러" if tag in SECURITY_TAGS else "정치·경제"
 
 
 def _key(*parts) -> str:
@@ -43,6 +53,7 @@ def _sub(line: str) -> str:
 def _from_edition(day: str, ed: dict, origin: str) -> list[dict]:
     """일일 편집본(또는 올린 일일 PPT 에서 읽은 내용) 하나를 재료로 푼다."""
     out = []
+    cfg = config.topics_config()
     md = timeutil.md(day)
     for e in ed.get("events") or []:
         text = " ".join(x for x in ((e.get("day") or "").strip(), (e.get("time") or "").strip(),
@@ -50,11 +61,15 @@ def _from_edition(day: str, ed: dict, origin: str) -> list[dict]:
         if (e.get("text") or "").strip():
             head = text if (e.get("day") or "").strip() else f"{md}, {text}"
             out.append({"key": _key(origin, day, "event", head), "day": day, "origin": origin, "head": head,
-                        "subs": [], "tag": "테러", "basis": "일일 1장 사건"})
+                        "subs": [], "tag": "테러", "section": "치안·테러", "basis": "일일 1장 사건"})
     for box, label in (("politics", "정치 / 치안"), ("economy", "경제 / 국제")):
         for it in parse_items(ed.get(box) or ""):
+            # 일일 2장: '경제 / 국제' 상자는 국제, '정치 / 치안' 상자는 문장의 낱말로 치안·테러를 가려낸다.
+            tag = "국제" if box == "economy" else ranking.classify({"title": it["head"], "snippet": ""}, cfg)[0]
             out.append({"key": _key(origin, day, box, it["head"]), "day": day, "origin": origin, "head": it["head"],
-                        "subs": it["subs"], "tag": "", "basis": f"일일 2장 {label}"})
+                        "subs": it["subs"], "tag": tag if tag in SECURITY_TAGS else "",
+                        "section": "국제" if box == "economy" else _section(tag if tag in SECURITY_TAGS else "정치"),
+                        "basis": f"일일 2장 {label}"})
     return out
 
 
@@ -85,7 +100,7 @@ def materials(conn, data: dict, demo: bool = False) -> list[dict]:
                     "needs": llm.needs_summary(a),
                     "head": f"{timeutil.md(day)}, {title} ({ranking.source_display(a, cfg)})",
                     "subs": [_sub(x) for x in (a.get("ko_summary") or "").split("\n") if x.strip()],
-                    "tag": a.get("category") or "",
+                    "tag": a.get("category") or "", "section": _section(a.get("category") or "", a.get("region") or ""),
                     "basis": a.get("summary_basis") or ("원문 제목" if not a.get("ko_title") else "제목 기반")})
 
     for a in events:
@@ -100,7 +115,7 @@ def materials(conn, data: dict, demo: bool = False) -> list[dict]:
     for m in out:
         m["on"] = choice.get(m["key"], m["origin"] != "recommended")
         m["label"] = ORIGIN_LABELS[m["origin"]]
-    out.sort(key=lambda m: (m["day"], list(ORIGIN_LABELS).index(m["origin"])))
+    out.sort(key=lambda m: (SECTIONS.index(m["section"]), m["day"], list(ORIGIN_LABELS).index(m["origin"])))
     for n, m in enumerate(out, start=1):
         m["n"] = n
     return out
@@ -210,7 +225,7 @@ WEEKLY_APPENDIX = """
 
 
 def material_block(m: dict) -> str:
-    lines = [f"[{m['n']}] ({timeutil.md(m['day'])} · {m['label']} · 근거: {m['basis']}) {m['head']}"]
+    lines = [f"[{m['n']}] ({timeutil.md(m['day'])} · {m['section']} · {m['label']} · 근거: {m['basis']}) {m['head']}"]
     return "\n".join(lines + [f"    {s}" for s in m["subs"]])
 
 

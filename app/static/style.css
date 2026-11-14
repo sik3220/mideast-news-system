@@ -130,3 +130,6 @@ table.form td,table.form th{padding:3px 6px;text-align:center;font-size:13.5px}t
 .mat .msub{display:block;margin-left:12px;font-size:13.5px;color:#44443f}
 .mat.recommended:not(:has(input:checked)){color:var(--muted)}
 details.basis{margin-top:10px;font-size:14px}details.basis summary{cursor:pointer;color:#3c5f80}
+.mats h3.sub{font-size:14px;z-index:1;border-bottom:1px solid var(--line)}
+.mats button.mini{font-size:12px;padding:1px 8px;margin-left:6px;font-weight:400;color:var(--muted)}
+.mat .mday{display:inline-block;min-width:44px;font-weight:600;color:var(--muted);font-size:13px}

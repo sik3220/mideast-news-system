@@ -27,9 +27,10 @@ def test_materials_collect_daily_items_selected_and_recommended(conn):
     mats = weekly.materials(conn, dict(WEEK))
     by_origin = {o: [m for m in mats if m["origin"] == o] for o in weekly.ORIGIN_LABELS}
     assert [m["head"] for m in by_origin["daily"]] == [
-        "11.10, 08:49 Kirkuk州, IS 수색작전 실시", "11.10, 재무부 장관, 천궁-II 대금 지급 지시 (INA, 11.10)",
-        "11.10, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.10)"]
-    assert by_origin["daily"][1]["subs"] == ["* 1차분 12,500만 달러"]
+        "11.10, 재무부 장관, 천궁-II 대금 지급 지시 (INA, 11.10)", "11.10, 08:49 Kirkuk州, IS 수색작전 실시",
+        "11.10, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.10)"]                    # 보고서 순서: 정치 → 치안·테러 → 국제
+    assert [m["section"] for m in mats] == ["정치·경제", "정치·경제", "정치·경제", "치안·테러", "국제"]
+    assert by_origin["daily"][0]["subs"] == ["* 1차분 12,500만 달러"]
     assert [m["article_id"] for m in by_origin["selected"]] == [picked]
     assert [m["article_id"] for m in by_origin["recommended"]] == [other]
     assert all(m["on"] for m in mats if m["origin"] != "recommended")      # 일일·선택은 기본 포함
@@ -43,11 +44,11 @@ def test_materials_collect_daily_items_selected_and_recommended(conn):
 
 
 REPLY = {"politics": [{"head": "11.10, 재무부 장관, 천궁-II 대금 지급 지시",
-                       "subs": ["* 1차분 12,500만 달러", "* 11.12, 방공사령부에 3,300만 달러 추가 배정"], "sources": [2]}],
-         "terror": [{"head": "11.10, Kirkuk州, IS 수색작전 실시", "subs": [], "sources": [1]}],
+                       "subs": ["* 1차분 12,500만 달러", "* 11.12, 방공사령부에 3,300만 달러 추가 배정"], "sources": [1]}],
+         "terror": [{"head": "11.10, Kirkuk州, IS 수색작전 실시", "subs": [], "sources": [4]}],
          "oil": [],
          "intl": [{"title": "美-이란, 역내 분쟁 관련",
-                   "items": [{"head": "11.10, 美, 이란 원유 수출 제재 확대", "subs": ["☞ 이라크 원유 수출에 영향 가능"], "sources": [3]}]}]}
+                   "items": [{"head": "11.10, 美, 이란 원유 수출 제재 확대", "subs": ["☞ 이라크 원유 수출에 영향 가능"], "sources": [5]}]}]}
 
 
 def test_draft_request_sends_only_checked_materials_and_fills_the_editor(conn, monkeypatch):
