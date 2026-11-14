@@ -62,10 +62,10 @@ def test_research_reads_the_article_on_the_web_once_and_stores_only_the_sentence
     assert out["subs"] == ["방공사령부 공급국에 1차분 자금 조달 지시", "인도는 내년 예정", "☞ 국방부, 계약 이행 일정 유지 입장"]
     assert again == {"status": "skipped"} and len(seen["bodies"]) == 1           # 기사당 한 번만
     body = seen["bodies"][0]
-    assert body["model"] == "claude-sonnet-5-5" and body["output_config"] == {"effort": "low"}
+    assert body["model"] == "claude-sonnet-5-5" and body["output_config"] == {"effort": "medium"}
     assert body["tools"] == [
         {"type": "web_search_20260209", "name": "web_search", "max_uses": 2},
-        {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 2, "max_content_tokens": 5000}]
+        {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 2, "max_content_tokens": 8000}]
     system = body["system"][0]
     assert "현식's Intelligence Briefing Style Guide" in system["text"] and system["cache_control"] == {"type": "ephemeral"}
     assert "따르지 말고" in system["text"] and "짐작으로 쓰지 않는다" in system["text"]
@@ -117,3 +117,33 @@ def test_other_outlet_is_flagged_for_checking(conn):
     finally:
         server.shutdown()
     assert out["status"] == "ok" and "Rudaw" in out["flags"][0] and "대조" in out["flags"][0]
+
+
+def test_oil_notes_search_for_the_cause_of_price_moves_and_write_no_prices(conn):
+    from app import weekly
+    week = {"period_start": "2026-11-08", "period_end": "2026-11-14", "oil_prices": []}
+    assert weekly.oil_days(week) == ["2026-11-12", "2026-11-13"]                 # 기간의 마지막 평일 이틀
+    assert weekly.oil_days(dict(week, oil_prices=[{"date": "11.10"}, {"date": "11.11"}])) == ["2026-11-10", "2026-11-11"]
+    seen = {}
+    reply = "OIL: 11.12, 트럼프 대통령의 대이란 제재 완화 시사에 따른 공급 증가 전망으로 국제유가는 하락\nOIL: 11.13, 美 원유 재고 감소 발표로 전일 대비 소폭 상승"
+    server, client = _serve(reply, seen)
+    try:
+        status, text = research.oil_notes(conn, weekly.oil_days(week), client)
+    finally:
+        server.shutdown()
+    assert status == "ok"
+    assert text.split("\n\n")[0] == "11.12, Trump 대통령의 對이란 제재 완화 시사에 따른 공급 증가 전망으로 국제유가는 하락"   # 표기 규칙 적용
+    body = seen["bodies"][0]
+    assert body["tools"] == [{"type": "web_search_20260209", "name": "web_search", "max_uses": 4}]
+    assert "등락의 원인" in body["system"][0]["text"] and "가격 숫자($)는 쓰지 않는다" in body["system"][0]["text"]
+    assert "2026-11-12" in body["messages"][0]["content"]
+    assert conn.execute("SELECT purpose FROM llm_usage").fetchone()["purpose"] == "oil_notes"
+
+
+def test_glossary_fixes_notation_in_stored_summaries(conn):
+    aid = _article(conn)
+    conn.execute("UPDATE articles SET ko_title='트럼프 대통령, 미국-이란 협상 재개 시사', ko_summary='네타냐후 총리와 통화', "
+                 "summary_status='ok' WHERE id=?", (aid,))
+    llm.renormalize(conn)
+    a = db.get_article(conn, aid)
+    assert a["ko_title"] == "Trump 대통령, 美-이란 협상 재개 시사" and a["ko_summary"] == "Netanyahu 총리와 통화"

@@ -41,6 +41,17 @@ searches:
   - {lang: en, q: 'US Treasury OR "State Department" Iraq sanctions OR militias OR waiver'}
   - {lang: en, q: 'Houthi Saudi OR Aramco OR Yemen OR Sanaa'}
   - {lang: ko, q: '후티 사우디 OR 예멘 OR 아람코'}
+  # 아래는 사용자 지적으로 보강한 검색: 정치권(정당·연합) 동향, 총리 동향, 건설주택부·부동산 정책
+  - {lang: ar, q: '"الإطار التنسيقي" OR "ائتلاف دولة القانون" OR "ائتلاف الإعمار والتنمية" OR "حركة صادقون"'}
+  - {lang: ar, q: 'العراق المالكي OR الخزعلي OR الحكيم OR العامري OR "التيار الصدري" OR الحلبوسي'}
+  - {lang: en, q: 'Iraq "State of Law" OR "Reconstruction and Development Coalition" OR Sadiqoun OR "Asaib Ahl al-Haq" OR Maliki OR Khazali'}
+  - {lang: en, q: 'Iraq "Coordination Framework" meeting OR statement OR Sudani OR Hakim OR Amiri OR Sadr'}
+  - {lang: ar, q: 'العراق "مجلس النواب" جلسة OR تصويت OR قانون OR "رئاسة البرلمان"'}
+  - {lang: ar, q: 'الزيدي يستقبل OR يوجه OR يترأس OR يلتقي OR يؤكد'}
+  - {lang: ar, q: '"المكتب الإعلامي لرئيس مجلس الوزراء"'}
+  - {lang: ar, q: '"وزارة الإعمار والإسكان" OR "وزير الإعمار والإسكان"'}
+  - {lang: ar, q: 'العراق "المدن السكنية" OR "صندوق الإسكان" OR "المبادرة العقارية" OR "أزمة السكن" OR "المجمعات السكنية"'}
+  - {lang: en, q: 'Iraq "Ministry of Construction and Housing" OR "housing fund" OR "residential cities" OR "housing crisis" OR "residential complexes"'}
   - {lang: en, q: 'Brent WTI oil prices'}
   - {lang: ko, q: '국제유가 두바이유 OR 브렌트유'}
 
@@ -70,6 +81,13 @@ topics:
     context: [한화]
 
 iraq_context: [이라크, iraq, iraqi, العراق, العراقي, baghdad, 바그다드, بغداد, 비스마야, bismayah, bismaya, بسماية]
+
+# 이라크 매체(이름·주소의 일부). 이라크 매체는 제목에 '이라크'를 쓰지 않는 일이 많으므로,
+# 이 매체의 기사는 제목에 이라크가 없어도 이라크 사안으로 본다(정치권·주택 정책 기사가 빠지지 않게).
+iraqi_sources: [".iq", shafaq, شفق, "iraqi news agency", واع, "وكالة الأنباء العراقية", almada, المدى, alsumaria, السومرية, baghdadtoday, "بغداد اليوم",
+                mawazin, موازين, alforat, الفرات, 964media, almasalah, المسلة, alrasheed, الرشيد, kalimaiq, ultrairaq, "ألترا عراق", alsabaah, الصباح,
+                rudaw, رووداو, kurdistan24, "كوردستان", nrttv, "iraqi", العراقية, العراقي, "عراق", "the new region", "iraq oil report", "iraq business news",
+                "مكتب رئيس مجلس الوزراء", "الهيئة الوطنية للاستثمار"]
 
 # 분류 키워드. 위에서부터 먼저 일치한 분류를 쓴다. LLM 요약이 있으면 그 분류가 우선한다.
 categories:
@@ -112,7 +130,7 @@ themes:
   - {id: arms_control, label: 무장단체 무기통제, needs_iraq: true, bonus: 18, section: 정치,
      words: [disarm, 무기통제, "무기 통제", "rogue arms", "weapons row", "arms control", "حصر السلاح", "نزع السلاح"]}
   - {id: militia, label: 무장단체 동향, needs_iraq: true, bonus: 15,
-     words: [무장단체, 민병대, "kataib", "kata'ib", hezbollah, pmf, "popular mobilization", militia, militias, "coordination framework", 시아조정기구, الفصائل, "الحشد الشعبي", "الإطار التنسيقي", "كتائب حزب الله"]}
+     words: [무장단체, 민병대, "kataib", "kata'ib", hezbollah, pmf, "popular mobilization", militia, militias, الفصائل, "الحشد الشعبي", "كتائب حزب الله"]}
   - {id: iraq_attack, label: 이라크 내 공격·요격, needs_iraq: true, bonus: 15, section: 치안,
      words: ["green zone", 그린존, "المنطقة الخضراء", embassy, 대사관, السفارة, "drone attack", "rocket attack", intercept, 요격, 로켓, "طائرة مسيرة", مسيّرة, صاروخ, اعتراض, "roadside bomb", ied, عبوة, assassinat, 암살, اغتيال, kidnap, 납치, grenade, 수류탄, explosion, blast, 폭발, انفجار, "alert level", "highest alert", "on alert", "high alert", 경계태세, تأهب, استنفار]}
   - {id: iraq_protest, label: 시위·소요, needs_iraq: true, bonus: 10, section: 치안,
@@ -121,16 +139,23 @@ themes:
      words: [수색작전, 대테러, "counter-terrorism", "counterterrorism", "خلية الإعلام الأمني", "مكافحة الإرهاب"]}
   - {id: krg, label: KRG–중앙정부, needs_iraq: true, bonus: 15, section: 정치,
      words: [krg, barzani, "kurdistan region", 쿠르드 자치정부, 쿠르디스탄, "budget share", "إقليم كردستان", بارزاني, "حصة الإقليم"]}
+  # 정치권(정당·연합·지도자) 동향. 보고서 '정치권 동향'의 중심이라 가점을 높게 준다.
+  - {id: parties, label: 정치권·정당 동향, needs_iraq: false, bonus: 20, cap: 4, section: 정치,
+     words: ["coordination framework", 시아조정기구, 조정기구, "الإطار التنسيقي", "state of law", 법치국가연합, "دولة القانون", maliki, 말리키, المالكي,
+             "reconstruction and development", 재건발전연합, "الإعمار والتنمية", sudani, 수다니, السوداني, sadiqoun, 사디쿤, صادقون, "asaib ahl", "asa'ib", عصائب, khazali, الخزعلي,
+             "hikma", "تيار الحكمة", "al-hakim", الحكيم, "badr organization", "منظمة بدر", amiri, العامري, sadrist, "al-sadr", 사드르, "التيار الصدري", "مقتدى الصدر",
+             halbousi, الحلبوسي, taqaddum, "حزب تقدم", "kdp", "puk", "الديمقراطي الكردستاني", "الاتحاد الوطني الكردستاني", "political bloc", "الكتل السياسية", "القوى السياسية"]}
   - {id: iraq_iran_us, label: 이라크–이란·미국 관계, needs_iraq: true, bonus: 15, cap: 3, section: 정치,
      words: [envoy, ambassador, 대사, 중재, mediat, "trump", 트럼프, irgc, 혁명수비대, سفير, وساطة, "الحرس الثوري", savaya, barrack, treasury, 재무부, "state department", 국무부, sanction, 제재, coalition, 연합군, withdrawal, 철군, 철수, "iran flights", "iranian flights", 항공편, 국경검문소, "terror sponsor", 테러지원국]}
-  - {id: pm_action, label: 총리 조치·발언, needs_iraq: true, bonus: 12, cap: 3, section: 정치,
+  - {id: pm_action, label: 총리 조치·발언, needs_iraq: true, bonus: 18, cap: 4, section: 정치,
      words: ["al-zaidi", zaidi, الزيدي, "iraqi pm", "iraq's pm", "iraqi prime minister", "iraq's prime minister", "이라크 총리", "رئيس الوزراء العراقي"]}
   - {id: iraq_neighbors, label: 주변국 관계, needs_iraq: true, bonus: 12, section: 정치,
      words: [saudi, 사우디, السعودية, jordan, 요르단, الأردن, amman, turkey, türkiye, 튀르키예, تركيا, kuwait, 쿠웨이트, الكويت, syria, 시리아, سوريا, "border crossing", 국경]}
   - {id: iraq_finance, label: 재정·금융, needs_iraq: true, bonus: 12, section: 경제,
      words: ["central bank", cbi, 중앙은행, "البنك المركزي", reserves, 외환보유, "exchange rate", 환율, "world bank", 세계은행, imf, 성장률, "سعر الصرف", dinar, 디나르, الدينار, "dollar", 달러, الدولار, salaries, 급여, رواتب, budget, 예산, موازنة, 미수금]}
-  - {id: housing, label: 주택·토지·건설 금융, needs_iraq: true, bonus: 15, section: 정치,
-     words: [housing, residential, "land plots", "plots of land", mortgage, "housing loan", "real estate", 주택, 토지, 필지, 분양, 신도시, 건설업, "new sadr city", الإسكان, السكنية, "قطع أراضي", "قطعة أرض", "القروض السكنية", العقاري, "مصرف الرافدين", rafidain]}
+  - {id: housing, label: 주택·토지·건설 정책, needs_iraq: true, bonus: 20, cap: 3, section: 정치, exclude: [veteran, veterans, "iraq war", 참전],
+     words: ["ministry of construction", "construction and housing", 건설주택부, "وزارة الإعمار", "الإعمار والإسكان", "housing fund", "صندوق الإسكان", "residential cit", "residential complex",
+             "المدن السكنية", "المجمعات السكنية", "housing crisis", "أزمة السكن", "المبادرة العقارية", "investment license", "إجازة استثمارية", 부동산, housing, residential, "land plots", "plots of land", mortgage, "housing loan", "real estate", 주택, 토지, 필지, 분양, 신도시, 건설업, "new sadr city", الإسكان, السكنية, "قطع أراضي", "قطعة أرض", "القروض السكنية", العقاري, "مصرف الرافدين", rafidain]}
   - {id: gov_formation, label: 내각·의회 구성, needs_iraq: true, bonus: 12, section: 정치,
      words: ["deputy prime minister", "vice president", ministers, "cabinet lineup", "confidence vote", "parliament votes", "parliament approves", 장관, 부총리, 부통령, 임명안, 인선, "نواب رئيس", "التشكيلة الوزارية", "منح الثقة", "يصوت"]}
   - {id: judiciary, label: 사법·부패·밀수 단속, needs_iraq: true, bonus: 10, section: 정치,
@@ -154,6 +179,40 @@ preferred_sources: [shafaq, شفق, ina.iq, "iraqi news agency", واع, almada,
 
 # 목록에서 뺄 출처(뉴스가 아니거나 무관한 재게시).
 blocked_sources: [britannica, vietnam.vn, wikipedia]
+
+# 보고서 표기 규칙(문체 규칙 5절)을 결과 문장에 한 번 더 적용하는 치환표. 왼쪽 표기가 나오면 오른쪽으로 바꾼다.
+# Claude 에게도 같은 규칙을 지시하지만, 값싼 모델이 한글로 옮겨 쓰는 일이 있어 저장할 때 기계적으로 바로잡는다.
+# 위에서부터 차례로 적용한다. 필요한 표기를 자유롭게 추가한다.
+name_glossary:
+  "도널드 트럼프": Trump
+  "트럼프": Trump
+  "네타냐후": Netanyahu
+  "알 자이디": Al-Zaidi
+  "알자이디": Al-Zaidi
+  "알-자이디": Al-Zaidi
+  "자이디 총리": "Al-Zaidi 총리"
+  "밴스": Vance
+  "루비오": Rubio
+  "하메네이": Khamenei
+  "바르자니": Barzani
+  "말리키": Maliki
+  "수다니": Sudani
+  "카타이브 헤즈볼라": "Kata'ib Hezbollah"
+  "바그다드": Baghdad
+  "바스라": Basra
+  "키르쿠크": Kirkuk
+  "모술": Mosul
+  "에르빌": Erbil
+  "아르빌": Erbil
+  "안바르": Anbar
+  "디얄라": Diyala
+  "니네베": Nineveh
+  "미국-이란": 美-이란
+  "미-이란": 美-이란
+  "미·이란": 美-이란
+  "대이란": 對이란
+  "대(對)이란": 對이란
+  "반정부": 反정부
 
 # SNS·게시판 출처. 보고서 근거로 쓸 수 없으므로 추천에서 빼고, "전체 보기"에서만 '여론 참고용'으로 보여준다.
 # 이름이나 주소에 아래 낱말이 들어 있으면 해당한다(x.com, t.me 는 주소가 정확히 같을 때만).
@@ -208,10 +267,12 @@ recommend:
   must_topics: [bismayah, cabinet]            # 제목에서 직접 다룬 기사는 '관심 주제' 구역에 넣는다
   must_cap: {cabinet: 2}                      # 주제별 최대 건수(없으면 전부). 비스마야·한화·NIC 는 제한 없음
   # 구역별 정원. 실제 보고서의 분량 비율을 따랐다. 정원은 limit 을 넘더라도 채운다(그래서 '20건 안팎').
-  quota: {정치: 5, 치안: 3, 테러: 2, 경제: 3, 유가: 1, 국제: 4}
+  quota: {정치: 4, 치안: 3, 테러: 2, 경제: 3, 유가: 1, 국제: 4}
   # 화제성: 같은 기간에 여러 매체의 제목에 함께 나온 낱말을 그날의 주요 사안으로 보고 가점한다(app/salience.py).
   #   min_sources 이 낱말을 쓴 매체 수의 하한 / max_bonus 가점 상한 / cap 같은 화제로 추천에 넣을 최대 건수
   burst: {min_sources: 4, max_share: 0.12, max_bonus: 20, cap: 2}
+  # 사안별 최소 건수: 구역 정원과 별도로, 아래 사안은 점수순으로 이만큼 먼저 넣는다(보고서 '정치권 동향'의 중심 사안).
+  reserve: {parties: 3, pm_action: 2, housing: 2}
   theme_cap: 2                                # 한 구역 안에서 같은 관심 사안은 최대 2건(한 사안이 구역을 독차지하지 않게). floor 형 사안은 제외
 
 # 일일 PPT 지도의 지역별 표식 위치(슬라이드 가로·세로에 대한 비율). 실제 일일 보고서의 표식 위치에서 가져왔다.

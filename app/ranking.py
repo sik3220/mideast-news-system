@@ -56,8 +56,18 @@ def classify(a: dict, cfg: dict) -> tuple[str, str]:
     category = next((c for c, words in cfg["categories"].items() if find_term(words, title)), None) \
         or next((c for c, words in cfg["categories"].items() if find_term(words, rest)), "기타")
     region = next((r for r, words in cfg["regions"].items() if find_term(words, title)), None) \
-        or next((r for r, words in cfg["regions"].items() if find_term(words, rest)), "기타 중동")
+        or next((r for r, words in cfg["regions"].items() if find_term(words, rest)), None) \
+        or ("이라크" if is_iraqi_source(a, cfg) else "기타 중동")     # 이라크 매체는 제목에 '이라크'를 잘 쓰지 않는다
     return category, region
+
+
+def is_iraqi_source(a: dict, cfg: dict) -> bool:
+    name, domain = (a.get("source_name") or "").lower(), (a.get("source_domain") or "").lower()
+    for s in cfg.get("iraqi_sources") or []:
+        s = str(s).lower()
+        if (s == ".iq" and domain.endswith(".iq")) or (s != ".iq" and (s in name or s in domain)):
+            return True
+    return False
 
 
 def match_themes(a: dict, cfg: dict) -> list[dict]:
@@ -67,8 +77,12 @@ def match_themes(a: dict, cfg: dict) -> list[dict]:
     """
     title, rest = a.get("title") or "", a.get("snippet") or ""
     has_iraq = find_term(cfg["iraq_context"], title + " " + rest) is not None
+    if not has_iraq and is_iraqi_source(a, cfg):
+        # 이라크 매체의 기사라도 제목이 다른 나라를 가리키면(사우디·예멘 등 역내 보도) 이라크 사안으로 보지 않는다.
+        has_iraq = not any(find_term(words, title) for r, words in cfg["regions"].items() if r != "이라크")
     return [t for t in cfg.get("themes") or []
-            if (has_iraq or not t.get("needs_iraq")) and find_term(t["words"], title)]
+            if (has_iraq or not t.get("needs_iraq")) and find_term(t["words"], title)
+            and not (t.get("exclude") and find_term(t["exclude"], title))]
 
 
 def _source_text(a: dict) -> str:

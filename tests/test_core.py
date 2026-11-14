@@ -305,8 +305,8 @@ def test_recommended_is_limited_and_balanced_across_categories(conn):
     shown, matched, trimmed = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
     assert matched == 50 and trimmed and len(shown) == 20
     cats = [a["category"] for a in shown]
-    # 정원: 정치 5, 치안·테러 4, 경제 3. 남는 8자리는 점수순(치안이 가장 높음)으로 채운다.
-    assert cats.count("경제") == 3 and cats.count("정치") == 5 and cats.count("치안") == 12
+    # 정원: 정치 4, 치안 3, 경제 3. 남는 자리는 점수순(치안이 가장 높음)으로 채운다.
+    assert cats.count("경제") == 3 and cats.count("정치") == 4 and cats.count("치안") == 13
     everything, _, cut = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, True)
     assert len(everything) == 50 and not cut                     # 전체 보기
 

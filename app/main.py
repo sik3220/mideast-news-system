@@ -68,6 +68,7 @@ def startup() -> None:
             demo.seed(conn)
         # 추천 규칙(config/topics.yaml)을 고친 뒤 다시 켜면 저장된 기사에도 바로 반영되게 한다.
         pipeline.recompute(conn, config.demo_mode())
+        llm.renormalize(conn)
         llm.recheck_flags(conn)
     try:
         daily_ppt.ensure_base_image()      # 양식만 넣어 두면 지도 위치 지정 화면의 바탕 그림을 스스로 만든다
@@ -681,6 +682,16 @@ async def weekly_save(request: Request):
             with db.session() as c:
                 return weekly.make_draft(c, data, demo=config.demo_mode())[1]
         msg = await run_in_threadpool(work)
+    elif action == "oil":
+        def work_oil():
+            with db.session() as c:
+                return research.oil_notes(c, weekly.oil_days(data))
+        status, text = await run_in_threadpool(work_oil)
+        if status == "ok":
+            data["oil"] = "\n\n".join(filter(None, [data["oil"].strip(), text]))
+            msg = "유가 등락 원인을 찾아 ‘유가 동향 설명’에 넣었습니다. 표의 가격과 방향이 맞는지 확인해 주세요."
+        else:
+            msg = text
     elif action == "undo":
         msg = "초안을 만들기 전 내용으로 되돌렸습니다." if weekly.undo_draft(data) else "되돌릴 내용이 없습니다."
     with db.session() as conn:

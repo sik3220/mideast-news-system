@@ -213,6 +213,16 @@ def pick_recommended(events: list[dict], cfg: dict | None = None, scale: float =
             take(a, "관심 주제 직접 보도")
         else:
             over_cap.add(a["id"])
+    for theme_id, n in (rule.get("reserve") or {}).items():   # 사안별 최소 건수(정치권·총리·주택 정책 등)
+        got = 0
+        for a in events:
+            if got >= round(int(n) * scale):
+                break
+            if a["id"] in picked or a["id"] in over_cap or a["score"] < floor or same_story_full(a):
+                continue
+            if theme_id in {t["id"] for t in ranking.match_themes(a, cfg)}:
+                take(a, "주요 사안")
+                got += 1
     theme_cap = round(int(rule.get("theme_cap", 0)) * scale)
     for section, quota in (rule.get("quota") or {}).items():
         pool = [a for a in events if a["id"] not in picked and a["id"] not in over_cap

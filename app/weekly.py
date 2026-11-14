@@ -135,6 +135,27 @@ def translate_materials(conn, data: dict, client=None, demo: bool = False) -> di
     return llm.summarize_batch(conn, pending, client)
 
 
+def oil_days(data: dict) -> list[str]:
+    """유가 동향을 쓸 날짜: 유가 표에 넣은 날짜가 있으면 그것, 없으면 기간의 마지막 평일 이틀(원본 관행)."""
+    start, end = date.fromisoformat(data["period_start"]), date.fromisoformat(data["period_end"])
+    typed = []
+    for row in data.get("oil_prices") or []:
+        m = re.match(r"\s*(\d{1,2})\.(\d{1,2})", str(row.get("date") or ""))
+        if m:
+            for year in (end.year, start.year):
+                try:
+                    d = date(year, int(m.group(1)), int(m.group(2)))
+                except ValueError:
+                    continue
+                if start - timedelta(days=3) <= d <= end + timedelta(days=3):
+                    typed.append(d.isoformat())
+                    break
+    if typed:
+        return typed
+    days = [d for d in _days(data["period_start"], data["period_end"]) if date.fromisoformat(d).weekday() < 5]
+    return days[-2:]
+
+
 def security_list(mats: list[dict]) -> list[dict]:
     """테러 통계를 셀 때 옆에 두고 볼 치안·테러 재료."""
     return [m for m in mats if m["tag"] in SECURITY_TAGS]
@@ -211,11 +232,14 @@ WEEKLY_APPENDIX = """
 - **재료에 없는 사실·수치·날짜·인과를 지어내지 않는다.** 근거가 "제목 기반"·"원문 제목"인 재료는 그 제목이 말하는 범위를 넘겨 풀어 쓰지 않는다.
 - 같은 내용이 여러 재료에 있으면 한 번만 쓴다. 가치가 낮거나 중복인 재료는 빼도 된다.
 - 주간 보고에는 출처를 적지 않는다. 머리줄 끝의 `(출처, 날짜)` 는 뗀다.
+- **재료의 세부 내용을 줄이지 않는다.** 원인·쟁점, 수치, 일정·후속 절차, 발언 요지가 재료에 있으면 하위 줄로 살린다. 제목만 남긴 얕은 항목을 만들지 않는다.
+- 표기는 5절을 반드시 지킨다: 외국 인명·지명은 로마자 + 직함(Trump 대통령, Al-Zaidi 총리, Baghdad, Kirkuk州), 美-이란, 對이란. 정당·연합은 보고서 표기(시아조정기구, 법치국가연합, 재건발전연합, 사디쿤 운동).
+- politics 에서는 정치권(정당·연합·지도자) 동향, 총리의 주요 조치·발언, 주택·건설 정책을 빠뜨리지 않는다.
 
 ## 구역
 - politics: 이라크 국내 정치·정부·의회·경제 정책·비스마야/한화/NIC 관련. 날짜순.
 - terror: 이라크 내 테러·대테러 작전·치안 사건의 상세. 날짜순.
-- oil: 국제유가 동향. 재료에 있는 내용만. 가격 숫자를 만들어 내지 않는다.
+- oil: 국제유가 동향. 날짜별로 **등락의 원인**을 한 문장으로 쓴다: `M.D, [원인이 된 사건·발언]에 따른 [시장의 해석]으로 국제유가는 [상승/하락/수준]`. 재료에 있는 내용만 쓰고 가격 숫자를 만들어 내지 않는다.
 - intl: 이라크 밖의 역내·국제 사안. 주제별 소제목으로 묶는다. <previous_titles> 의 소제목이 맞으면 그대로 쓰고, 맞는 것이 없을 때만 같은 형식으로 새로 만든다.
 - 해당 재료가 없는 구역은 빈 목록으로 둔다.
 
@@ -268,7 +292,8 @@ def _all_items(draft: WeeklyDraft) -> list[WItem]:
 
 
 def _text(items: list[WItem]) -> str:
-    return items_to_text([{"head": it.head.strip(), "subs": [_sub(s) for s in it.subs if s.strip()]} for it in items])
+    return llm.apply_glossary(items_to_text(
+        [{"head": it.head.strip(), "subs": [_sub(s) for s in it.subs if s.strip()]} for it in items]))
 
 
 EDIT_KEYS = ("politics", "terror", "oil", "intl")

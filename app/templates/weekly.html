@@ -102,7 +102,11 @@
 
 <section class="panel">
   <h2 class="sec">경제 — 국제유가 관련 동향</h2>
-  <label>유가 동향 설명<textarea name="oil" rows="5">{{ data.oil }}</textarea></label>
+  <label>유가 동향 설명 (날짜별 등락과 그 원인)<textarea name="oil" rows="5" placeholder="11.10, …에 따른 긴장 완화 기대감으로 국제유가는 2개월 만에 최저치 기록">{{ data.oil }}</textarea></label>
+  <div class="row" style="margin:6px 0 10px">
+    <button type="submit" name="action" value="oil" {{ 'disabled' if not llm_ready }}>유가 등락 원인 찾아 쓰기</button>
+    <span class="meta">Claude 가 그날의 유가 시황 기사를 검색해 원인을 한 줄씩 씁니다(1회 호출). 표에 날짜를 넣었으면 그 날짜, 없으면 기간의 마지막 평일 이틀. 가격 숫자는 쓰지 않습니다.</span>
+  </div>
   <table class="form" aria-label="유가 표" id="oil-table">
     <tr><th>날짜 (예: 11.10)</th>{% for k, label in oil_fields %}<th>{{ label }} ($)</th>{% endfor %}</tr>
     {% for row in data.oil_prices %}

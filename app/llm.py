@@ -90,6 +90,8 @@ APPENDIX = """
 - claim_type: 정부·기관 발표는 "공식 발표", 이해당사자 주장은 "당사자 주장", 특정 인물의 말은 "발언 인용", 매체의 자체 보도는 "언론 보도".
 - followups: 이 기사만으로 확인되지 않아 추가로 확인할 사항 0~2개.
 
+표기는 5절을 반드시 지킨다: 외국 인명·지명은 한글로 옮기지 않고 로마자 + 직함으로 쓴다(Trump 대통령, Al-Zaidi 총리, Netanyahu 총리, Baghdad, Kirkuk州). 美-이란, 對이란, 反정부처럼 정해진 한자 표기를 쓴다. 정당·연합은 보고서 표기를 쓴다(시아조정기구, 법치국가연합, 재건발전연합, 사디쿤 운동).
+
 입력으로 받은 모든 기사에 대해 하나씩 빠짐없이 돌려준다. 이미 한국어인 기사도 같은 문체로 다시 쓴다.
 """
 
@@ -146,17 +148,39 @@ def needs_summary(a: dict) -> bool:
     return a["summary_status"] != "ok" or (a.get("summary_ver") or 0) < SUMMARY_VERSION
 
 
+def apply_glossary(text: str) -> str:
+    """보고서 표기 규칙(문체 규칙 5절)을 치환표로 한 번 더 적용한다: 트럼프 → Trump, 미국-이란 → 美-이란 등."""
+    for old, new in (config.topics_config().get("name_glossary") or {}).items():
+        text = text.replace(str(old), str(new))
+    return text
+
+
+def renormalize(conn) -> None:
+    """이미 저장된 요약에도 표기 치환표를 적용한다. API 를 부르지 않는다."""
+    for r in conn.execute("SELECT id, ko_title, ko_summary FROM articles WHERE ko_title IS NOT NULL").fetchall():
+        title, subs = apply_glossary(r["ko_title"]), apply_glossary(r["ko_summary"] or "")
+        if (title, subs) != (r["ko_title"], r["ko_summary"] or ""):
+            conn.execute("UPDATE articles SET ko_title=?, ko_summary=? WHERE id=?", (title, subs, r["id"]))
+
+
 def recheck_flags(conn) -> None:
-    """저장된 요약의 점검 표시를 현재 규칙으로 다시 매긴다. API 를 부르지 않는다."""
+    """저장된 요약의 점검 표시를 현재 규칙으로 다시 매긴다. API 를 부르지 않는다.
+
+    본문을 읽고 쓴 요약(붙여넣기·웹 검색)은 대조할 본문이 남아 있지 않으므로 건드리지 않는다.
+    """
     rows = conn.execute("SELECT id, title, snippet, ko_title, ko_summary, category, stage, claim_type, summary_flags "
-                        "FROM articles WHERE summary_status='ok' AND ko_title IS NOT NULL").fetchall()
+                        "FROM articles WHERE summary_status='ok' AND ko_title IS NOT NULL "
+                        "AND COALESCE(summary_basis,'') NOT LIKE '본문 기반%' "
+                        "AND COALESCE(summary_basis,'') NOT LIKE '웹 검색 기반%'").fetchall()
     for r in rows:
         try:
             s = Summary(ko_title=r["ko_title"], ko_summary=r["ko_summary"] or "", category=r["category"] or "기타",
                         stage=r["stage"] or "해당없음", claim_type=r["claim_type"] or "기타", followups=[])
         except ValueError:
             continue                      # 사용자가 고친 값 등 형식이 다른 것은 그대로 둔다
-        flags = json.dumps(guard("\n".join(filter(None, [r["title"], r["snippet"]])), s)[1], ensure_ascii=False)
+        found = guard("\n".join(filter(None, [r["title"], r["snippet"]])), s)[1]
+        kept = [f for f in json.loads(r["summary_flags"] or "[]") if "웹에서 기사 본문을 찾지 못함" in f]
+        flags = json.dumps(found + kept, ensure_ascii=False)
         if flags != r["summary_flags"]:
             conn.execute("UPDATE articles SET summary_flags=? WHERE id=?", (flags, r["id"]))
 
@@ -234,7 +258,7 @@ def _store(conn, article: dict, result) -> str:
     conn.execute(
         """UPDATE articles SET ko_title=?, ko_summary=?, category=?, stage=?, claim_type=?, followups=?,
              summary_status='ok', summary_error=NULL, summary_basis=?, summary_flags=?, summary_ver=? WHERE id=?""",
-        (summary.ko_title.strip(), summary.ko_summary.strip(), summary.category, summary.stage,
+        (apply_glossary(summary.ko_title.strip()), apply_glossary(summary.ko_summary.strip()), summary.category, summary.stage,
          summary.claim_type, json.dumps(summary.followups[:2], ensure_ascii=False), basis,
          json.dumps(flags, ensure_ascii=False), SUMMARY_VERSION, article["id"]))
     return "ok"
