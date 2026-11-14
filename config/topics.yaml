@@ -73,7 +73,10 @@ topics:
     label: 이라크 내각회의
     # "council of ministers" 는 다른 나라 내각도 가리키므로 이라크 문맥과 함께 있을 때만 일치로 본다.
     strong: ["iraqi cabinet", "iraq cabinet", "iraq's cabinet", "이라크 내각", "مجلس الوزراء العراقي"]
-    context: ["council of ministers", "مجلس الوزراء", cabinet, 내각회의, 내각, 각료회의, 총리실]
+    context: ["council of ministers", "مجلس الوزراء", cabinet, 내각회의, 내각, 각료회의, 총리실, "الجلسة الاعتيادية", "يترأس الجلسة", "يترأس جلسة"]
+    # 아랍어로 '총리'는 "رئيس مجلس الوزراء"(내각회의 의장)라서, 총리가 나오는 모든 기사가 내각회의로 잡혔다.
+    # 아래 표현은 지우고 나서 일치를 본다(직함·기관 이름일 뿐 내각회의 소식이 아니다).
+    ignore: ["رئيس مجلس الوزراء", "لرئيس مجلس الوزراء", "رئاسة مجلس الوزراء", "president of the council of ministers", "head of the council of ministers", "chairman of the council of ministers"]
   korea_media:
     label: 한국 언론
     # 한국어 기사이면서 비스마야·한화 관련일 때만 해당 (코드에서 lang=ko 조건을 건다)

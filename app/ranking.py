@@ -39,6 +39,8 @@ def match_topic(topic_id: str, a: dict, cfg: dict) -> str | None:
     """'title' | 'mention' | None"""
     t = cfg["topics"][topic_id]
     title, rest = _texts(a)
+    for phrase in t.get("ignore") or []:              # 직함처럼 주제어를 품고 있지만 그 주제가 아닌 표현은 지우고 본다
+        title, rest = title.replace(phrase, " "), rest.replace(phrase, " ")
     full = title + " " + rest
     if topic_id == "korea_media" and a.get("lang") != "ko":
         return None

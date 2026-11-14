@@ -729,3 +729,16 @@ def test_arabic_source_names_are_shown_in_a_readable_form():
     assert ranking.source_display({"source_name": "연합뉴스", "source_domain": "yna.co.kr"}, cfg) == "연합뉴스"
     assert not ranking.is_social_source({"source_name": "Max News", "source_domain": "max.com"}, cfg)
     assert ranking.is_social_source({"source_name": "X", "source_domain": "x.com"}, cfg)
+
+
+def test_arabic_pm_title_alone_does_not_make_an_article_a_cabinet_meeting_item():
+    """아랍어 '총리'(رئيس مجلس الوزراء)에 '내각'이 들어 있다고 해서 총리의 모든 동정이 내각회의 주제가 되지는 않는다."""
+    from app.config import topics_config
+    cfg = topics_config()
+    speech = make_article(title="أهم ما جاء في كلمة رئيس مجلس الوزراء السيد علي فالح الزيدي أثناء حفل افتتاح كاتدرائية في بغداد",
+                          source_name="مكتب رئيس مجلس الوزراء", lang="ar")
+    session = make_article(title="رئيس مجلس الوزراء يترأس الجلسة الاعتيادية لمجلس الوزراء في بغداد", lang="ar")
+    decision = make_article(title="مجلس الوزراء العراقي يقر مشروع قانون الموازنة", lang="ar")
+    assert ranking.match_topic("cabinet", speech, cfg) is None
+    assert ranking.match_topic("cabinet", session, cfg) == "title"
+    assert ranking.match_topic("cabinet", decision, cfg) == "title"
