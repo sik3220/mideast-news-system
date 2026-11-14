@@ -85,6 +85,35 @@ def is_blocked_source(a: dict, cfg: dict) -> bool:
     return any(str(s).lower() in text for s in cfg.get("blocked_sources") or [])
 
 
+def is_social_source(a: dict, cfg: dict) -> bool:
+    """SNS·게시판 글인지. 보고서 근거로 쓸 수 없어 추천에서 빼고 여론 참고용으로만 보여준다."""
+    name, domain = (a.get("source_name") or "").lower(), (a.get("source_domain") or "").lower()
+    for s in cfg.get("social_sources") or []:
+        s = str(s).lower()
+        if s in ("x.com", "t.me"):
+            if domain == s or domain.endswith("." + s):
+                return True
+        elif s in name or s in domain:
+            return True
+    return False
+
+
+def _readable(name: str) -> bool:
+    """한글이나 로마자가 들어 있어 그대로 읽을 수 있는 이름인지."""
+    return any("a" <= ch.lower() <= "z" or "가" <= ch <= "힣" for ch in name)
+
+
+def source_display(a: dict, cfg: dict) -> str:
+    """화면과 문서에 적을 출처 이름. 아랍어 이름은 표(source_labels)로 바꾸고, 표에 없으면 사이트 주소로 적는다."""
+    name, domain = (a.get("source_name") or "").strip(), (a.get("source_domain") or "").strip()
+    for key, label in (cfg.get("source_labels") or {}).items():
+        if str(key).lower() in name.lower():
+            return str(label)
+    if name and _readable(name):
+        return name
+    return domain or name or "출처 미상"
+
+
 SECTIONS = ("정치", "치안", "테러", "경제", "유가", "국제")
 FOCUS = "관심 주제"
 

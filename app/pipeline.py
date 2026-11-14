@@ -126,6 +126,7 @@ def list_articles(conn, d_from: str, d_to: str, *, keyword: str = "", category: 
         if ranking.is_blocked_source(a, cfg):
             continue
         a["undated"] = within is None
+        a["social"] = ranking.is_social_source(a, cfg)
         in_range.append(a)
     # 화제성은 필터와 무관하게 기간 안 기사 전체로 계산한다.
     salience.add_salience(in_range, (cfg.get("recommend") or {}).get("burst") or {})
@@ -146,7 +147,8 @@ def list_articles(conn, d_from: str, d_to: str, *, keyword: str = "", category: 
         a["verification"] = ranking.verification(a, a["n_sources"])
         out.append(a)
     # 관심 주제 탭에서는 그 주제를 직접 다룬 기사를 먼저, 검색에만 걸린 기사를 뒤에 둔다.
-    out.sort(key=lambda a: (bool(topic) and topic not in a["topics"], ranking.sort_key(a)))
+    # SNS 글은 맨 뒤로: 같은 사건을 언론사가 보도했으면 그 기사가 대표가 된다.
+    out.sort(key=lambda a: (a["social"], bool(topic) and topic not in a["topics"], ranking.sort_key(a)))
     # 사건별로 가장 점수가 높은 기사를 대표로 세우고 나머지는 related 로 붙인다.
     shown: dict[int, dict] = {}
     result = []
@@ -177,6 +179,8 @@ def pick_recommended(events: list[dict], cfg: dict | None = None, scale: float =
     """
     cfg = cfg or topics_config()
     rule = cfg.get("recommend") or {}
+    everything = events
+    events = [a for a in events if not a.get("social")]   # SNS 글만 있는 사건은 추천하지 않는다(전체 보기에는 남는다)
     limit = round(int(rule.get("limit", 20)) * scale)
     floor = float(rule.get("min_score", 0))
     caps = {k: round(v * scale) for k, v in (rule.get("must_cap") or {}).items()}
@@ -232,7 +236,7 @@ def pick_recommended(events: list[dict], cfg: dict | None = None, scale: float =
                 break
             if a["id"] not in picked and not (skip_over_cap and a["id"] in over_cap) and not same_story_full(a):
                 take(a, "점수 상위")
-    for a in events:                                     # 선택한 기사는 제한과 무관하게 남긴다
+    for a in everything:                                 # 선택한 기사는 제한과 무관하게 남긴다(SNS 글 포함)
         if a["id"] not in picked and (a["selected"] or any(r["selected"] for r in a["related"])):
             take(a, "선택한 기사")
     return sorted(picked.values(), key=ranking.sort_key)

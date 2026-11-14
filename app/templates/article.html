@@ -7,7 +7,7 @@
   <h2 class="sec" style="font-size:19px">{{ a.ko_title or a.title }}</h2>
   <p class="orig" dir="auto" lang="{{ a.lang }}"><b>원문 제목</b> {{ a.title }}</p>
   <p class="meta">
-    {{ a.source_name or a.source_domain or '출처 미상' }} · 발표 {{ a|when }} · 수집 {{ a.first_seen_at|local }} (바그다드)
+    {{ a|src }}{% if (a|src) != a.source_name and a.source_name %} <span dir="auto">({{ a.source_name }})</span>{% endif %} · 발표 {{ a|when }} · 수집 {{ a.first_seen_at|local }} (바그다드)
     {% if a.lang %} · {{ lang_names.get(a.lang, a.lang) }}{% endif %} · 검색 경로 {{ a.provider }}
   </p>
   <p>{% if a.url.startswith('http') %}<a class="btn primary" href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문 열기</a>{% else %}<span class="chip">직접 추가한 항목 (원문 주소 없음)</span>{% endif %}
@@ -69,7 +69,7 @@
   {% if related %}
   <ul class="plain">{% for r in related %}
     <li><a href="/article/{{ r.id }}?back={{ back_qs|urlencode }}" dir="auto">{{ r.ko_title or r.title }}</a>
-      <span class="meta">— {{ r.source_name or r.source_domain }} · {{ r|when }}</span></li>{% endfor %}</ul>
+      <span class="meta">— {{ r|src }} · {{ r|when }}</span></li>{% endfor %}</ul>
   {% if a.group_note %}<p class="hint">{{ a.group_note }}</p>{% endif %}
   <form method="post" action="/article/{{ a.id }}/split">
     <input type="hidden" name="back_qs" value="{{ back_qs }}">

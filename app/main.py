@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from . import config, db, demo, draft, enrich, llm, pipeline, timeutil
+from . import config, db, demo, draft, enrich, llm, pipeline, ranking, timeutil
 from .docs import daily_ppt, preview, weekly_word
 from .docs.items import items_to_text
 
@@ -24,6 +24,7 @@ app = FastAPI(title="이라크·중동 업무 뉴스 대시보드", docs_url=Non
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 templates.env.filters["when"] = lambda a: timeutil.display(a["published_at"], a["published_date"], a["time_precision"])
+templates.env.filters["src"] = lambda a: ranking.source_display(a, config.topics_config())
 templates.env.filters["md"] = lambda d: timeutil.md(d) if d else "날짜 미상"
 templates.env.filters["local"] = lambda s: (timeutil.parse_iso(s).astimezone(timeutil.BAGHDAD).strftime("%m.%d %H:%M")
                                             if s else "없음")
@@ -413,7 +414,7 @@ def _article_item(a: dict, with_source: bool) -> dict:
     day = timeutil.md(a["published_date"]) if a.get("published_date") else "날짜 미상"
     head = f"{day}, {a.get('ko_title') or a['title']}"
     if with_source:
-        head += f" ({a.get('source_name') or a.get('source_domain')}, {day})"
+        head += f" ({ranking.source_display(a, config.topics_config())}, {day})"
     return {"head": head, "subs": _sub_lines(a)}
 
 
@@ -469,7 +470,7 @@ def _daily_import(selected: list[dict], day: str, date_to: str = "") -> tuple[li
         return pol_items, []
     multi = bool(date_to)
     span = f"{timeutil.md(day)}~{timeutil.md(date_to).split('.')[1]}" if multi else timeutil.md(day)
-    sources = list(dict.fromkeys(a.get("source_name") or a.get("source_domain") or "출처 미상" for a in intl))[:2]
+    sources = list(dict.fromkeys(ranking.source_display(a, config.topics_config()) for a in intl))[:2]
     last = timeutil.md(date_to or day)
     subs = []
     for a in intl:

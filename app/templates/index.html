@@ -7,12 +7,13 @@
          aria-label="선택: {{ a.ko_title or a.title }}">
   <div class="body">
     <h3><a href="/article/{{ a.id }}?back={{ qs|urlencode }}" dir="auto">{{ a.published_date|md }}, {{ a.ko_title or a.title }}</a>
-      <span class="src">({{ a.source_name or a.source_domain or '출처 미상' }}, {{ a.published_date|md }})</span></h3>
+      <span class="src">({{ a|src }}, {{ a.published_date|md }})</span></h3>
     {% for line in (a.ko_summary or '').split('\n') if line.strip() %}<p class="sub">{{ line if line.startswith('☞') else '* ' ~ line }}</p>{% endfor %}
     {% for f in a.summary_flags %}<p class="sub flag">☞ {{ f }}</p>{% endfor %}
     {% if a.summary_status == 'failed' %}<p class="sub flag">☞ 번역 실패 — 원문 제목 그대로입니다</p>{% endif %}
     <p class="foot">
       {% for t in a.topics if t != 'korea_media' %}<span class="tag">{{ topics[t] }}</span>{% endfor %}
+      {% if a.social %}<span class="tag warn">SNS 글 · 여론 참고용 (보고 근거로 쓰지 않음)</span>{% endif %}
       {% if a.n_sources >= 2 %}<span>매체 {{ a.n_sources }}곳 보도</span>{% endif %}
       {% if a.url.startswith('http') %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문</a>{% else %}<span>직접 추가</span>{% endif %}
       {% if a.summary_basis == '본문 기반' %}<span>본문 기반</span>{% endif %}
@@ -22,7 +23,7 @@
         <ul>
         {% for r in a.related %}
           <li><a href="/article/{{ r.id }}?back={{ qs|urlencode }}" dir="auto">{{ r.ko_title or r.title }}</a>
-            <span class="src">({{ r.source_name or r.source_domain }}, {{ r.published_date|md }})</span></li>
+            <span class="src">({{ r|src }}, {{ r.published_date|md }})</span></li>
         {% endfor %}
         </ul>
       </details>

@@ -17,7 +17,7 @@
       {% for a in selected %}
       <li><span class="chip cat">{{ a.category or '기타' }}</span>
         <a href="/article/{{ a.id }}" dir="auto">{{ a.ko_title or a.title }}</a>
-        <span class="meta">— {{ a.source_name or a.source_domain }} · {{ a|when }}{% if not a.ko_title %} · 한국어 요약 없음{% endif %}</span></li>
+        <span class="meta">— {{ a|src }} · {{ a|when }}{% if not a.ko_title %} · 한국어 요약 없음{% endif %}</span></li>
       {% endfor %}
     </ul>
     {% else %}

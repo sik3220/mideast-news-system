@@ -35,7 +35,8 @@ def unverified_notes(a: dict) -> list[str]:
 def item_lines(a: dict) -> list[str]:
     head = a.get("ko_title") or a["title"]
     day = md(a["published_date"]) if a.get("published_date") else "날짜 미상"
-    source = a.get("source_name") or a.get("source_domain") or "출처 미상"
+    from . import config, ranking
+    source = ranking.source_display(a, config.topics_config())
     lines = [f"- {day}, {head} ({source}, {_published(a)})"]
     if a.get("ko_summary"):
         lines += [f"  {x}" if x.startswith("☞") else f"  * {x}" for x in a["ko_summary"].split("\n") if x.strip()]

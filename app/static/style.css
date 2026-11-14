@@ -92,6 +92,7 @@ table.form td,table.form th{padding:3px 6px;text-align:center;font-size:13.5px}t
 .item .sub.flag{color:var(--bad);font-size:13.5px}
 .item .foot{margin:5px 0 0 14px;font-size:12.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}
 .item .tag{background:#fbe3d3;color:#7a3208;border-radius:4px;padding:0 6px}
+.item .tag.warn{background:#fde2e2;color:#8a1f1f}
 .item details{flex-basis:auto}.item details summary{cursor:pointer}
 .item details[open]{flex-basis:100%}.item details ul{margin:4px 0 0;padding-left:18px;font-size:13.5px}.item details li{margin:2px 0}
 

@@ -696,3 +696,35 @@ def test_ubiquitous_words_are_not_treated_as_a_story():
     arts = [dict(make_article(title=f"Iraq Iran unique{i}", source_domain=f"d{i}.x"), id=i, score=10, reasons=[]) for i in range(10)]
     salience.add_salience(arts, {"min_sources": 4})
     assert all(a["burst"] is None and a["score"] == 10 for a in arts)
+
+
+def test_social_posts_are_not_recommended_but_stay_in_the_full_list(conn):
+    """Facebook 같은 SNS 글은 추천에서 빠지고(여론 참고용), 전체 목록에는 남는다. 선택하면 다시 보인다."""
+    from app.config import topics_config
+    fb = make_article(title="Iraq cabinet approves 2027 budget draft law", source_name="Facebook", source_domain="facebook.com")
+    news = make_article(title="Iraqi parliament votes on election law amendment", source_name="Shafaq News",
+                        source_domain="shafaq.com", url="https://shafaq.com/a/1")
+    fid, _ = db.upsert_article(conn, fb)
+    nid, _ = db.upsert_article(conn, news)
+    pipeline.recompute(conn)
+    events = pipeline.list_articles(conn, "2026-11-01", "2026-11-30")
+    assert {a["id"] for a in events} == {fid, nid}
+    assert next(a for a in events if a["id"] == fid)["social"] is True
+    assert events[-1]["id"] == fid                                   # SNS 글은 맨 뒤
+    picked = {a["id"] for a in pipeline.pick_recommended(events, topics_config())}
+    assert nid in picked and fid not in picked
+    conn.execute("UPDATE articles SET selected=1 WHERE id=?", (fid,))
+    events = pipeline.list_articles(conn, "2026-11-01", "2026-11-30")
+    assert fid in {a["id"] for a in pipeline.pick_recommended(events, topics_config())}
+
+
+def test_arabic_source_names_are_shown_in_a_readable_form():
+    from app.config import topics_config
+    cfg = topics_config()
+    assert ranking.source_display({"source_name": "مكتب رئيس مجلس الوزراء", "source_domain": "pmo.iq"}, cfg) == "이라크 총리실"
+    assert ranking.source_display({"source_name": "شفق نيوز", "source_domain": "shafaq.com"}, cfg) == "Shafaq News"
+    assert ranking.source_display({"source_name": "وكالة مجهولة", "source_domain": "example.iq"}, cfg) == "example.iq"
+    assert ranking.source_display({"source_name": "Reuters", "source_domain": "reuters.com"}, cfg) == "Reuters"
+    assert ranking.source_display({"source_name": "연합뉴스", "source_domain": "yna.co.kr"}, cfg) == "연합뉴스"
+    assert not ranking.is_social_source({"source_name": "Max News", "source_domain": "max.com"}, cfg)
+    assert ranking.is_social_source({"source_name": "X", "source_domain": "x.com"}, cfg)
