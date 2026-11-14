@@ -383,12 +383,12 @@ def _file_row(file_id: int) -> tuple[dict, Path]:
 
 
 def download_name(kind: str, key: str) -> str:
-    """내려받을 때의 파일명. 일일은 평소 쓰는 틀 '일일정보보고(MM.DD)'."""
+    """내려받을 때의 파일명. 평소 쓰는 틀을 따르고, 날짜는 실제 파일처럼 앞에 0 을 붙이지 않는다."""
     d = date.fromisoformat(key[:10])
     if kind == "daily":
-        return f"일일정보보고({d.month:02d}.{d.day:02d}).pptx"
+        return f"일일정보보고({d.month}.{d.day}).pptx"
     r = d + timedelta(days=7)
-    return f"주간_종합_상황보고_{r.month}.{r.day}.docx"
+    return f"건설_이라크 주간 종합상황보고({r.month}월 {r.day}일).docx"
 
 
 @app.get("/files/{file_id}")
