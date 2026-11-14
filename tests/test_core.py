@@ -750,7 +750,7 @@ def test_search_strategy_keywords_are_searched_and_regional_news_from_iraqi_outl
     cfg = topics_config()
     queries = " ".join(s["q"] for s in cfg["searches"])
     for kw in ("قرارات مجلس الوزراء", "القوات الأمنية", "الإنذار الأمني", "كتائب حزب الله", "الحشد الشعبي", "جرف الصخر", "اعتقال",
-               "تهريب", "هجوم إرهابي", "عبوة ناسفة", "جهاز مكافحة الإرهاب", "Trump", "IRGC", "Basmaya", "ملحق العقد",
+               "تهريب", "هجوم إرهابي", "عبوة ناسفة", "جهاز مكافحة الإرهاب", "Trump", "IRGC", "Bismayah", "ملحق العقد",
                "المستحقات المالية", "استئناف العمل", "هيئة الاستثمار الوطنية", "한화건설"):
         assert kw in queries, kw
     assert "내각회의 의결사항" in search_goals_text() and "실제 송금" in search_goals_text()
@@ -768,3 +768,9 @@ def test_search_strategy_keywords_are_searched_and_regional_news_from_iraqi_outl
     iraqi = make_article(title="الإطار التنسيقي يعقد اجتماعاً لبحث ملف حصر السلاح", source_name="Shafaq News",
                          source_domain="shafaq.com", lang="ar")
     assert "parties" in [t["id"] for t in ranking.match_themes(iraqi, cfg)]
+
+
+def test_bismayah_is_the_spelling_used_in_documents():
+    from app import llm
+    assert llm.apply_glossary("Basmaya 신도시 7만 호 건설 재개") == "Bismayah 신도시 7만 호 건설 재개"
+    assert llm.apply_glossary("Bismayah New City") == "Bismayah New City"

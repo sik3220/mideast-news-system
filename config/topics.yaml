@@ -68,8 +68,9 @@ searches:
   - {lang: en, q: 'Trump Iran OR Iraq says OR warns OR statement OR "Truth Social"'}
   - {lang: en, q: 'IRGC OR "Revolutionary Guard" Iran OR Iraq OR Hormuz'}
   - {lang: en, q: 'Saudi Arabia Iraq drones OR drone OR airspace'}
-  # [비스마야 특별 검색] 표기 변형, 계약 부속합의·미지급금·공사 재개
-  - {topic: bismayah, lang: en, q: 'Basmaya OR Besmaya OR "Bismayah New City" OR "Bismaya New City"'}
+  # [비스마야 특별 검색] 계약 부속합의·미지급금·공사 재개. 표기는 Bismayah 다.
+  # (Basmaya·Besmaya 로 쓴 외신도 놓치지 않도록 주제어에는 남겨 두지만, 문서에는 Bismayah 로 고쳐 쓴다)
+  - {topic: bismayah, lang: en, q: 'Bismayah OR "Bismayah New City" OR BNCP Iraq'}
   - {topic: bismayah, lang: ar, q: 'بسماية "ملحق العقد" OR "المستحقات المالية" OR "استئناف العمل" OR هانوا'}
   - {topic: bismayah, lang: ar, q: '"هيئة الاستثمار الوطنية" OR "الهيئة الوطنية للاستثمار" بسماية OR هانوا OR "المدينة السكنية"'}
   - {topic: bismayah, lang: ko, q: '"한화건설" 이라크 OR "비스마야 신도시" OR "한화 비스마야"'}
@@ -210,6 +211,10 @@ blocked_sources: [britannica, vietnam.vn, wikipedia]
 # Claude 에게도 같은 규칙을 지시하지만, 값싼 모델이 한글로 옮겨 쓰는 일이 있어 저장할 때 기계적으로 바로잡는다.
 # 위에서부터 차례로 적용한다. 필요한 표기를 자유롭게 추가한다.
 name_glossary:
+  "Basmaya": Bismayah
+  "Besmaya": Bismayah
+  "Bismaya ": "Bismayah "
+  "바스마야": 비스마야
   "도널드 트럼프": Trump
   "트럼프": Trump
   "네타냐후": Netanyahu
