@@ -32,15 +32,17 @@
         문장은 원본처럼 “지역, 내용” 형태로 씁니다(예: Kirkuk州, …). 시각은 비워 둘 수 있습니다.</p>
       <label>사건이 없는 날 목록 상자에 넣을 문구
         <input type="text" name="no_event_text" value="{{ data.no_event_text }}"></label>
-      <p class="hint">원본 2건에는 사건이 없는 날의 예시가 없어 임시로 넣은 문구입니다. 실제 표기에 맞게 고쳐 주세요.</p>
     </div>
     <div>
       {% if base_ok %}
       <div class="map" id="map" aria-label="지도 표식 위치">
-        <img src="/daily/base.png" alt="원본 1장의 지도와 Baghdad 확대 지도">
+        <img src="/daily/base.png?v={{ base_ver }}" alt="원본 1장의 지도와 Baghdad 확대 지도">
+        <div class="s1 s1-date" id="s1-date"></div>
+        <div class="s1 s1-list" id="s1-list"></div>
       </div>
       <p class="hint" id="map-hint">사건의 <b>지도에서 위치 지정</b>을 누른 뒤 지도를 클릭하세요. 표식은 끌어서 옮기거나,
-        표식을 선택하고 화살표 키로 조금씩 옮길 수 있습니다. 위치는 자동 추정하지 않으며, 한 번 지정한 지역명의 위치는 기억해 두었다가 다음에 제안합니다.</p>
+        표식을 선택하고 화살표 키로 조금씩 옮길 수 있습니다.
+        표식 크기와 오른쪽 날짜·사건 목록은 실제 슬라이드와 같은 비율로 보여줍니다. 위치는 자동 추정하지 않으며, 한 번 지정한 지역명의 위치는 기억해 두었다가 다음에 제안합니다.</p>
       {% else %}
       <div class="warnbox">지도 바탕 그림이 없습니다. 원본 양식(doc_templates/daily_template.pptx)을 넣고 앱을 다시 켜면 자동으로 만들어집니다.</div>
       {% endif %}
@@ -87,6 +89,7 @@
 {% block script %}
 <script>
 const TYPES = {{ type_labels|tojson }}, COLORS = {{ type_colors|tojson }}, KNOWN = {{ locations|tojson }};
+const L = {{ layout|tojson }}, DAY = {{ day|tojson }};
 let events = {{ data.events|tojson }};
 let arming = null;
 const box = document.getElementById('events'), map = document.getElementById('map');
@@ -115,9 +118,36 @@ function render() {
   if (!events.length) box.insertAdjacentHTML('afterbegin', '<p class="hint">등록한 사건이 없습니다.</p>');
   drawMarkers();
 }
+const pct = v => (v * 100).toFixed(3);
+function dateLabel() {
+  const [y, m, d] = DAY.split('-').map(Number), to = document.querySelector('[name=date_to]').value;
+  if (!to || to === DAY) return `${y}. ${m}. ${d}`;
+  const [y2, m2, d2] = to.split('-').map(Number);
+  return `${y}. ${m}. ${d} ~ ${y === y2 && m === m2 ? d2 : m2 + '. ' + d2}`;
+}
+// 실제 슬라이드의 날짜 상자와 사건 목록 상자를 같은 자리·비율로 보여준다(보기 전용).
+function drawSlideText() {
+  if (!map || !L) return;
+  const dateEl = document.getElementById('s1-date'), listEl = document.getElementById('s1-list');
+  const shown = events.filter(e => (e.text || '').trim());
+  dateEl.textContent = dateLabel();
+  dateEl.style.cssText = `left:${pct(L.date.x)}%;top:${pct(L.date.y)}%;font-size:${pct(L.date.font)}cqw;` +
+    `line-height:${pct(L.date.h)}cqw`;
+  listEl.style.cssText = `left:${pct(L.list.x)}%;top:${pct(L.list.y)}%;max-width:${pct(L.list.max_w)}cqw;` +
+    `padding:${pct(L.list.pad_y)}cqw ${pct(L.list.pad_x)}cqw;font-size:${pct(L.list.font)}cqw;line-height:${pct(L.list.line_h)}cqw`;
+  const none = document.querySelector('[name=no_event_text]').value;
+  listEl.innerHTML = shown.length ? shown.map(e => {
+    const i = events.indexOf(e);
+    const line = [e.day, e.time, e.text].map(x => (x || '').trim()).filter(Boolean).join(' ');
+    return `<div class="ln" style="padding-left:${pct(L.list.text_x + L.list.hang)}cqw;text-indent:-${pct(L.list.hang)}cqw">` +
+      `<span class="mk" style="left:${pct(L.marker.dx - L.list.pad_x)}cqw;top:${pct(L.marker.dy - L.list.pad_y)}cqw;` +
+      `text-indent:0;background:${fill(e.type)}">${i + 1}</span>${esc(line)}</div>`;
+  }).join('') : `<div class="ln">${esc(none)}</div>`;
+}
 function drawMarkers() {
   if (!map) return;
-  map.querySelectorAll('.mk').forEach(m => m.remove());
+  drawSlideText();
+  map.querySelectorAll(':scope > .mk').forEach(m => m.remove());
   map.classList.toggle('arming', arming !== null);
   events.forEach((e, i) => {
     if (e.x == null) return;
@@ -134,8 +164,11 @@ const pos = ev => { const r = map.getBoundingClientRect();
 box.addEventListener('input', ev => {
   const row = ev.target.closest('.ev'); if (!row || !ev.target.dataset.f) return;
   events[+row.dataset.i][ev.target.dataset.f] = ev.target.value;
-  if (ev.target.dataset.f === 'type') render();
+  if (ev.target.dataset.f === 'type') render(); else drawSlideText();
 });
+document.querySelectorAll('[name=date_to],[name=no_event_text]').forEach(el => el.addEventListener('input', drawSlideText));
+if (map && L) { map.style.setProperty('--mk-w', pct(L.marker.w)); map.style.setProperty('--mk-h', pct(L.marker.h));
+  map.style.setProperty('--mk-font', pct(L.marker.font)); }
 box.addEventListener('change', ev => { if (ev.target.dataset.f === 'place') render(); });
 box.addEventListener('click', ev => {
   const btn = ev.target.closest('button[data-act]'); if (!btn) return;
@@ -166,7 +199,7 @@ if (map) {
     ev.preventDefault();
     const e = events[+m.dataset.i], step = ev.shiftKey ? 0.02 : 0.004;
     e.x = Math.min(1, Math.max(0, e.x + d[0] * step)); e.y = Math.min(1, Math.max(0, e.y + d[1] * step));
-    drawMarkers(); map.querySelector(`.mk[data-i="${m.dataset.i}"]`)?.focus();
+    drawMarkers(); map.querySelector(`:scope > .mk[data-i="${m.dataset.i}"]`)?.focus();
   });
 }
 document.getElementById('daily-form').addEventListener('submit', () => {

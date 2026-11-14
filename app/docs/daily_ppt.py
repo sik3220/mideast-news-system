@@ -94,12 +94,10 @@ def _fill_slide1(prs, slide, data: dict, warnings: list[str]) -> None:
         r.getparent().remove(r)
 
     list_box = _shape(slide, ID_LIST)
-    markers = [sh for sh in slide.shapes if _is_number_marker(sh)]
+    # 목록 상자 안쪽에 놓인 표식이 '목록 옆 표식', 나머지가 '지도 위 표식'이다.
+    markers, in_list = _list_markers(slide, list_box)
     if not markers:
         raise ValueError("원본 양식에서 번호 표식을 찾지 못함")
-    # 목록 상자 안쪽에 놓인 표식이 '목록 옆 표식', 나머지가 '지도 위 표식'이다.
-    in_list = [m for m in markers if list_box.left <= m.left <= list_box.left + 400000
-               and list_box.top <= m.top <= list_box.top + list_box.height]
     proto = copy.deepcopy((in_list or markers)[0]._element)
     marker_w, marker_h = markers[0].width, markers[0].height
     dx = (in_list[0].left - list_box.left) if in_list else 92291
@@ -250,11 +248,168 @@ def read_markers(path: Path) -> dict:
             "economy": _shape(prs.slides[1], ID_ECONOMY).text_frame.text}
 
 
-def compose_base_image(out_png: Path, template: Path | None = None, width: int = 1600) -> None:
-    """LibreOffice 없이 만드는 지도 바탕 그림: 원본 1장의 그림(지도·확대 지도·로고)을 슬라이드 좌표대로 붙인다.
+_FONT_FILES = {   # (보통, 굵게) — 맑은 고딕이 있는 윈도우를 먼저, 그다음 맥·리눅스의 한글 글꼴
+    False: ["C:/Windows/Fonts/malgun.ttf", "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+            "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"],
+    True: ["C:/Windows/Fonts/malgunbd.ttf", "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+           "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"],
+}
 
-    범례·Kurds 영역 같은 도형은 그려지지 않지만, 그림의 위치와 자르기를 그대로 따르므로
-    이 그림 위에서 지정한 표식 위치는 생성되는 PPT 의 위치와 같다.
+
+def _font(size_px: float, bold: bool):
+    from PIL import ImageFont
+    for path in (_FONT_FILES[True] if bold else []) + _FONT_FILES[False]:
+        try:
+            return ImageFont.truetype(path, max(6, round(size_px)))
+        except OSError:
+            continue
+    return None                                     # 한글 글꼴이 없으면 글자는 그리지 않는다
+
+
+def _rgba(fill_el):
+    """solidFill 에서 색을 읽는다. 직접 적힌 색(srgbClr, sysClr, 검정/흰색)만 읽고 테마 색은 추측하지 않는다."""
+    if fill_el is None:
+        return None
+    c = fill_el.find(_q("a:srgbClr"))
+    val = c.get("val") if c is not None else None
+    if val is None:
+        c = fill_el.find(_q("a:sysClr"))
+        val = c.get("lastClr") if c is not None else None
+    if val is None:
+        c = fill_el.find(_q("a:prstClr"))
+        val = {"black": "000000", "white": "FFFFFF"}.get(c.get("val")) if c is not None else None
+    if val is None:
+        return None
+    alpha = c.find(_q("a:alpha"))
+    a = round(255 * int(alpha.get("val")) / 100000) if alpha is not None else 255
+    return (int(val[0:2], 16), int(val[2:4], 16), int(val[4:6], 16), a)
+
+
+def _bezier(p0, p1, p2, p3, n=12):
+    out = []
+    for i in range(1, n + 1):
+        t = i / n
+        u = 1 - t
+        out.append((u**3 * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t**3 * p3[0],
+                    u**3 * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t**3 * p3[1]))
+    return out
+
+
+def _path_points(cust, w: float, h: float) -> list[list[tuple[float, float]]]:
+    """custGeom 경로를 도형 크기(w×h) 기준 좌표의 다각형들로 푼다."""
+    polys = []
+    for path in cust.findall(".//" + _q("a:path")):
+        sx, sy = w / float(path.get("w") or w), h / float(path.get("h") or h)
+        cur: list[tuple[float, float]] = []
+        for seg in path:
+            pts = [(float(pt.get("x")) * sx, float(pt.get("y")) * sy) for pt in seg.findall(_q("a:pt"))]
+            name = etree.QName(seg).localname
+            if name == "moveTo":
+                if len(cur) > 2:
+                    polys.append(cur)
+                cur = pts[:1]
+            elif name == "lnTo":
+                cur += pts
+            elif name == "cubicBezTo" and cur and len(pts) == 3:
+                cur += _bezier(cur[-1], *pts)
+        if len(cur) > 2:
+            polys.append(cur)
+    return polys
+
+
+def _draw_text(layer, tx, box, scale: float) -> None:
+    """도형 안 글자를 대략 같은 자리에 그린다(문단별 한 줄, 정렬·크기·굵기·색 반영)."""
+    from PIL import ImageDraw
+    body = tx.find(_q("a:bodyPr"))
+    ins = [int(body.get(k, d)) * scale for k, d in (("lIns", 91440), ("tIns", 45720), ("rIns", 91440), ("bIns", 45720))]
+    x0, y0, x1, y1 = box[0] + ins[0], box[1] + ins[1], box[2] - ins[2], box[3] - ins[3]
+    lines = []
+    for para in tx.findall(_q("a:p")):
+        runs = para.findall(_q("a:r"))
+        rpr = runs[0].find(_q("a:rPr")) if runs else para.find(_q("a:endParaRPr"))
+        size_pt = int(rpr.get("sz", "1800")) / 100 if rpr is not None else 18
+        text = "".join(r.findtext(_q("a:t")) or "" for r in runs)
+        ppr = para.find(_q("a:pPr"))
+        before = ppr.find(_q("a:spcBef") + "/" + _q("a:spcPts")) if ppr is not None else None
+        gap = int(before.get("val")) / 100 * EMU_PER_PT * scale if before is not None else 0
+        color = _rgba(rpr.find(_q("a:solidFill"))) if rpr is not None else None
+        lines.append({"text": text, "px": size_pt * EMU_PER_PT * scale, "gap": gap,
+                      "bold": rpr is not None and rpr.get("b") == "1", "color": color or (0, 0, 0, 255),
+                      "align": ppr.get("algn", "l") if ppr is not None else "l"})
+    while lines and not lines[-1]["text"].strip():
+        lines.pop()
+    if not lines:
+        return
+    lines[0]["gap"] = 0                             # 첫 문단의 '단락 앞' 간격은 적용되지 않는다
+    total = sum(ln["px"] * 1.2 + ln["gap"] for ln in lines)
+    y = y0 + (max(0, (y1 - y0 - total) / 2) if body.get("anchor") == "ctr" else 0)
+    draw = ImageDraw.Draw(layer)
+    for ln in lines:
+        y += ln["gap"]
+        font = _font(ln["px"], ln["bold"])
+        if font is not None and ln["text"].strip():
+            width = draw.textlength(ln["text"], font=font)
+            x = x0 + (x1 - x0 - width) / 2 if ln["align"] == "ctr" else x0
+            draw.text((x, y + ln["px"] * 0.6), ln["text"], font=font, fill=ln["color"], anchor="lm")
+        y += ln["px"] * 1.2
+
+
+def _draw_shape(canvas, el, to_slide, scale: float) -> None:
+    """도형 하나(sp, cxnSp)를 그린다. 그리지 못하는 속성은 건너뛴다."""
+    from PIL import Image, ImageDraw
+    sp_pr = el.find(_q("p:spPr"))
+    xfrm = sp_pr.find(_q("a:xfrm")) if sp_pr is not None else None
+    if xfrm is None:
+        return
+    off, ext = xfrm.find(_q("a:off")), xfrm.find(_q("a:ext"))
+    (l, t), (r, b) = to_slide(int(off.get("x")), int(off.get("y"))), to_slide(
+        int(off.get("x")) + int(ext.get("cx")), int(off.get("y")) + int(ext.get("cy")))
+    box = (l * scale, t * scale, r * scale, b * scale)
+    w, h = box[2] - box[0], box[3] - box[1]
+    fill = _rgba(sp_pr.find(_q("a:solidFill")))
+    ln = sp_pr.find(_q("a:ln"))
+    line = _rgba(ln.find(_q("a:solidFill"))) if ln is not None else None
+    line_w = max(1, round(int(ln.get("w", "9525")) * scale)) if ln is not None else 1
+    geom = sp_pr.find(_q("a:prstGeom"))
+    kind = geom.get("prst") if geom is not None else None
+    cust = sp_pr.find(_q("a:custGeom"))
+    layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    if cust is not None:
+        rot = math.radians(int(xfrm.get("rot", "0")) / 60000)
+        cx, cy = w / 2, h / 2
+        for poly in _path_points(cust, w, h):
+            pts = [(box[0] + cx + (x - cx) * math.cos(rot) - (y - cy) * math.sin(rot),
+                    box[1] + cy + (x - cx) * math.sin(rot) + (y - cy) * math.cos(rot)) for x, y in poly]
+            draw.polygon(pts, fill=fill, outline=line)
+    elif kind == "line":
+        if line is None:
+            return
+        xs = (box[2], box[0]) if xfrm.get("flipH") == "1" else (box[0], box[2])
+        ys = (box[3], box[1]) if xfrm.get("flipV") == "1" else (box[1], box[3])
+        draw.line([(xs[0], ys[0]), (xs[1], ys[1])], fill=line, width=line_w)
+    elif kind == "ellipse":
+        draw.ellipse(box, fill=fill, outline=line, width=line_w if line else 0)
+    elif kind in ("rect", "roundRect", "wedgeRectCallout"):
+        if fill or line:
+            radius = min(w, h) * 0.04 if kind == "roundRect" else 0
+            draw.rounded_rectangle(box, radius=radius, fill=fill, outline=line, width=line_w if line else 0)
+    else:
+        return
+    tx = el.find(_q("p:txBody"))
+    if tx is not None:
+        _draw_text(layer, tx, box, scale)
+    canvas.alpha_composite(layer)
+
+
+def compose_base_image(out_png: Path, template: Path | None = None, width: int = 1600) -> None:
+    """LibreOffice 없이 만드는 지도 바탕 그림: 원본 1장의 그림과 도형을 쌓인 순서대로 그린다.
+
+    지도·확대 지도, Kurds 영역, 범례, Baghdad·Bismayah 표시, 제목을 그리고
+    날짜 상자·사건 목록 상자·번호 표식은 뺀다(편집 화면이 그 자리에 직접 보여준다).
+    슬라이드 좌표를 그대로 따르므로 이 그림 위에서 지정한 표식 위치는 생성되는 PPT 의 위치와 같다.
     """
     import io
 
@@ -263,25 +418,81 @@ def compose_base_image(out_png: Path, template: Path | None = None, width: int =
     prs = Presentation(str(template))
     slide = prs.slides[0]
     scale = width / prs.slide_width
-    canvas = Image.new("RGB", (width, round(prs.slide_height * scale)), "white")
-    # 큰 그림(지도)을 먼저, 작은 그림(확대 지도)을 나중에 붙여 원본처럼 위에 오게 한다.
-    pictures = sorted((sh for sh in slide.shapes if sh.shape_type == 13), key=lambda sh: -(sh.width * sh.height))
-    for sh in pictures:
-        img = Image.open(io.BytesIO(sh.image.blob)).convert("RGB")
-        w, h = img.size
-        box = (round(w * sh.crop_left), round(h * sh.crop_top), round(w * (1 - sh.crop_right)), round(h * (1 - sh.crop_bottom)))
-        img = img.crop(box).resize((max(1, round(sh.width * scale)), max(1, round(sh.height * scale))))
-        canvas.paste(img, (round(sh.left * scale), round(sh.top * scale)))
+    canvas = Image.new("RGBA", (width, round(prs.slide_height * scale)), (255, 255, 255, 255))
+    skip = {sh.shape_id for sh in slide.shapes if _is_number_marker(sh)} | {ID_DATE, ID_LIST}
+
+    def walk(parent, to_slide):
+        for el in parent:
+            name = etree.QName(el).localname
+            cnv = el.find(".//" + _q("p:cNvPr"))
+            if cnv is not None and int(cnv.get("id")) in skip:
+                continue
+            if name == "pic":
+                sh = next(s for s in slide.shapes if s._element is el)
+                img = Image.open(io.BytesIO(sh.image.blob)).convert("RGBA")
+                w, h = img.size
+                img = img.crop((round(w * sh.crop_left), round(h * sh.crop_top),
+                                round(w * (1 - sh.crop_right)), round(h * (1 - sh.crop_bottom))))
+                img = img.resize((max(1, round(sh.width * scale)), max(1, round(sh.height * scale))))
+                canvas.alpha_composite(img, (round(sh.left * scale), round(sh.top * scale)))
+            elif name in ("sp", "cxnSp"):
+                _draw_shape(canvas, el, to_slide, scale)
+            elif name == "grpSp":
+                x = el.find(_q("p:grpSpPr")).find(_q("a:xfrm"))
+                o, e, co, ce = (x.find(_q(t)) for t in ("a:off", "a:ext", "a:chOff", "a:chExt"))
+                ox, oy, cox, coy = int(o.get("x")), int(o.get("y")), int(co.get("x")), int(co.get("y"))
+                kx, ky = int(e.get("cx")) / int(ce.get("cx")), int(e.get("cy")) / int(ce.get("cy"))
+                walk(el, lambda px, py, f=to_slide: f(ox + (px - cox) * kx, oy + (py - coy) * ky))
+
+    walk(slide.shapes._spTree, lambda px, py: (px, py))
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(out_png, "PNG")
+    canvas.convert("RGB").save(out_png, "PNG")
+
+
+def _list_markers(slide, list_box):
+    """번호 표식 전체와, 그 가운데 사건 목록 상자 안쪽에 놓인 '목록 옆 표식'."""
+    markers = [sh for sh in slide.shapes if _is_number_marker(sh)]
+    in_list = [m for m in markers if list_box.left <= m.left <= list_box.left + 400000
+               and list_box.top <= m.top <= list_box.top + list_box.height]
+    return markers, in_list
+
+
+def slide1_layout(template: Path | None = None) -> dict:
+    """편집 화면이 날짜·사건 목록·표식을 실제 슬라이드와 같은 자리·크기로 보여주기 위한 배치 값.
+
+    가로 값은 슬라이드 폭, 세로 위치는 슬라이드 높이에 대한 비율이고 크기(w, h, 글자)는 모두 폭에 대한 비율이다.
+    """
+    prs = Presentation(str(template or config.DAILY_TEMPLATE))
+    slide = prs.slides[0]
+    W, H = prs.slide_width, prs.slide_height
+    date_box, list_box = _shape(slide, ID_DATE), _shape(slide, ID_LIST)
+    markers, in_list = _list_markers(slide, list_box)
+    ppr = list_box._element.find(".//" + _q("a:pPr"))
+    mar_l, indent = int(ppr.get("marL", "0")), int(ppr.get("indent", "0"))
+    date_sz = int(date_box._element.find(".//" + _q("a:rPr")).get("sz", "1300"))
+    mk_sz = int(markers[0]._element.find(".//" + _q("a:rPr")).get("sz", "1100")) if markers else 1100
+    return {
+        "date": {"x": (date_box.left + 91440) / W, "y": date_box.top / H, "h": date_box.height / W,
+                 "font": date_sz / 100 * EMU_PER_PT / W},
+        "list": {"x": list_box.left / W, "y": list_box.top / H, "max_w": (W - list_box.left - LIST_RIGHT_MARGIN) / W,
+                 "pad_x": 91440 / W, "pad_y": 45720 / W, "line_h": LIST_LINE_EMU / W, "font": LIST_FONT_EMU / W,
+                 "text_x": (mar_l + indent) / W, "hang": -indent / W},
+        "marker": {"w": markers[0].width / W if markers else 168147 / W,
+                   "h": markers[0].height / W if markers else 164855 / W, "font": mk_sz / 100 * EMU_PER_PT / W,
+                   "dx": ((in_list[0].left - list_box.left) if in_list else 92291) / W,
+                   "dy": ((in_list[0].top - list_box.top) if in_list else 100108) / W},
+    }
 
 
 def ensure_base_image() -> str | None:
-    """바탕 그림이 없으면 만든다. LibreOffice 가 있으면 전체 렌더링, 없으면 그림 합성. 반환: 만든 방식 또는 None."""
+    """바탕 그림을 준비한다. LibreOffice 가 있으면 전체 렌더링을 한 번만, 없으면 켤 때마다 다시 합성한다
+    (합성 방식이 바뀌어도 옛 그림이 남지 않게). 반환: 만든 방식 또는 None."""
     from . import preview
-    if config.DAILY_BASE_IMAGE.exists() or not config.DAILY_TEMPLATE.exists():
+    if not config.DAILY_TEMPLATE.exists():
         return None
     if preview.available():
+        if config.DAILY_BASE_IMAGE.exists():
+            return None
         try:
             render_base_image(config.DAILY_BASE_IMAGE)
             return "rendered"

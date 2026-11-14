@@ -434,9 +434,11 @@ def daily_page(request: Request):
         locations = {k: {"x": v[0], "y": v[1]} for k, v in (config.topics_config().get("map_locations") or {}).items()}
         locations.update({r["name"]: {"x": r["x"], "y": r["y"]} for r in conn.execute("SELECT * FROM locations")})
         selected = _selected(conn, day, data.get("date_to") or day)
+    base_ok = config.DAILY_BASE_IMAGE.exists() and config.DAILY_TEMPLATE.exists()
     return render(request, "daily.html", day=day, data=data, saved=saved, history=history, locations=locations,
                   selected_count=len(selected), template_ok=config.DAILY_TEMPLATE.exists(),
-                  base_ok=config.DAILY_BASE_IMAGE.exists(), type_labels=daily_ppt.TYPE_LABELS,
+                  base_ok=base_ok, layout=daily_ppt.slide1_layout() if base_ok else None,
+                  base_ver=int(config.DAILY_BASE_IMAGE.stat().st_mtime) if base_ok else 0, type_labels=daily_ppt.TYPE_LABELS,
                   type_colors=daily_ppt.TYPE_COLORS, msg=request.query_params.get("msg", ""),
                   version=config.DAILY_TEMPLATE_VERSION)
 

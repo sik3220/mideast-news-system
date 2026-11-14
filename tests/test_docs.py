@@ -189,3 +189,44 @@ def test_map_base_image_can_be_made_without_libreoffice(tmp_path):
     kx, ky = config.topics_config()["map_locations"]["Kirkuk"]
     assert big.left / prs.slide_width < kx < (big.left + big.width) / prs.slide_width
     assert big.top / prs.slide_height < ky < (big.top + big.height) / prs.slide_height
+
+
+@needs_ppt
+def test_map_base_image_draws_kurds_area_and_legend_but_not_the_text_boxes(tmp_path):
+    """합성 바탕에 Kurds 영역(노랑)과 범례의 빨강·파랑 원이 있고, 날짜·사건 목록 자리는 비어 있다."""
+    from PIL import Image
+    from pptx import Presentation
+    out = tmp_path / "base.png"
+    daily_ppt.compose_base_image(out, width=1600)
+    img = Image.open(out)
+    prs = Presentation(str(config.DAILY_TEMPLATE))
+    shapes = {s.shape_id: s for s in prs.slides[0].shapes}
+
+    def center(sh):
+        return (round((sh.left + sh.width / 2) / prs.slide_width * 1600),
+                round((sh.top + sh.height / 2) / prs.slide_height * 900))
+
+    r, g, b = img.getpixel((500, 205))                               # ERBIL 글자 아래, Kurds 영역 안
+    assert r > 230 and g > 230 and b < 200                           # 노란 계열
+    r, g, b = img.getpixel(center(shapes[35]))                       # 범례: 테러상황(빨강)
+    assert r > 200 and g < 170 and b < 170
+    r, g, b = img.getpixel(center(shapes[34]))                       # 범례: 대테러작전(파랑)
+    assert b > 200 and r < 170
+    for sid in (daily_ppt.ID_DATE, daily_ppt.ID_LIST):               # 화면이 직접 보여주는 칸은 그리지 않는다
+        assert img.getpixel(center(shapes[sid])) == (255, 255, 255)
+
+
+@needs_ppt
+def test_slide1_layout_matches_template_shapes():
+    """편집 화면이 쓰는 배치 값은 양식의 도형 값 그대로다(표식 크기 = 슬라이드 폭의 약 1.84%)."""
+    from pptx import Presentation
+    prs = Presentation(str(config.DAILY_TEMPLATE))
+    slide = prs.slides[0]
+    box = next(s for s in slide.shapes if s.shape_id == daily_ppt.ID_LIST)
+    marker = next(s for s in slide.shapes if daily_ppt._is_number_marker(s))
+    lay = daily_ppt.slide1_layout()
+    assert lay["marker"]["w"] == marker.width / prs.slide_width
+    assert 0.017 < lay["marker"]["w"] < 0.02
+    assert lay["list"]["x"] == box.left / prs.slide_width
+    assert lay["list"]["y"] == box.top / prs.slide_height
+    assert lay["list"]["line_h"] == daily_ppt.LIST_LINE_EMU / prs.slide_width
