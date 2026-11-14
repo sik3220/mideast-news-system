@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import copy
 import re
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from docx import Document
@@ -128,10 +128,45 @@ def check(data: dict) -> tuple[list[str], list[str]]:
                 errors.append(f"유가 {row.get('date') or '?'} ‘{label}’ 값이 숫자가 아님")
     if not errors and complete and len(prices) >= 2:
         warnings += _oil_direction_warnings(data.get("oil", ""), prices)
-    for key, label in (("politics", "정치권 동향"), ("impact", "그룹 / 건설에 미치는 영향")):
-        if not (data.get(key) or "").strip():
-            warnings.append(f"‘{label}’ 내용이 비어 있음")
+    if not errors:
+        warnings += _table_sanity_warnings(data, stats, prices)
+    if not (data.get("politics") or "").strip():
+        warnings.append("‘정치권 동향’ 내용이 비어 있음")
+    if len((data.get("impact") or "").strip()) < 20:
+        warnings.append("‘그룹 / 건설에 미치는 영향’이 비어 있거나 너무 짧음")
     return errors, warnings
+
+
+def _table_sanity_warnings(data: dict, stats: dict, prices: list[dict]) -> list[str]:
+    """표 값이 기간·서로와 어긋나 보이는 경우를 알린다(입력 실수 방지용 단순 규칙. 값은 고치지 않는다)."""
+    out = []
+    try:
+        start, end = date.fromisoformat(data["period_start"]), date.fromisoformat(data["period_end"])
+    except (KeyError, TypeError, ValueError):
+        start = end = None
+    for row in prices:
+        m = re.match(r"\s*(\d{1,2})\.(\d{1,2})", str(row.get("date") or ""))
+        if m and start:
+            try:
+                d = date(end.year, int(m.group(1)), int(m.group(2)))
+            except ValueError:
+                d = None
+            if d is None or not (start - timedelta(days=1) <= d <= end + timedelta(days=1)):
+                out.append(f"유가 표 날짜 {row['date']} 가 보고 기간({start.month}.{start.day}~{end.month}.{end.day}) 밖임")
+        values = {}
+        for key, label in OIL_FIELDS:
+            try:
+                values[label] = float(row.get(key))
+            except (TypeError, ValueError):
+                pass
+        for label, v in values.items():
+            others = [x for k, x in values.items() if k != label]
+            if others and not (0.5 <= v / (sum(others) / len(others)) <= 2):
+                out.append(f"유가 {row.get('date') or '?'} ‘{label}’ ${v:g} 가 다른 유종과 크게 다름 — 입력 확인")
+    filled = [int(stats[k]) for k, _ in STAT_FIELDS if str(stats.get(k) or "").strip().isdigit()]
+    if len(filled) == len(STAT_FIELDS) and sum(filled) >= 5 and sum(1 for v in filled if v) == 1:
+        out.append("테러 통계가 한 유형에만 몰려 있음 — 유형별로 나눠 입력했는지 확인")
+    return out
 
 
 def _oil_direction_warnings(oil_text: str, prices: list[dict]) -> list[str]:

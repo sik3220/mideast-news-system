@@ -27,6 +27,9 @@
 
 <section class="panel">
   <h2 class="sec">① 이번 주 재료 <span class="meta">— 체크한 것만 초안에 들어갑니다 (<span id="mat-count"></span>)</span></h2>
+  {% if missing and not demo %}<div class="warnbox">기간 중 <b>{% for d in missing %}{{ d|md }}{{ ', ' if not loop.last }}{% endfor %}</b> 에는 재료가 없습니다. 그날 수집을 하지 않았다면 기간 전체를 수집하세요.
+    <button type="submit" name="action" value="collect" style="margin-left:8px">이 기간 기사 수집</button>
+    <span class="spinner" role="status">수집 중입니다… 1분쯤 걸립니다.</span></div>{% endif %}
   {% if pending and llm_ready %}<div class="working" id="mat-working" role="status" data-start="{{ start }}">
     <span class="dot"></span> 원문 제목 그대로인 재료 {{ pending }}건을 보고서 문체로 정리하고 있습니다. 끝나면 목록이 바뀝니다.</div>{% endif %}
   {% if materials %}
@@ -63,7 +66,7 @@
   <p class="hint">초안은 같은 사안·인과관계가 있는 사건을 한 항목으로 엮고(하위 줄에 날짜순 경과), 구역과 국제사회 소제목별로 나눠 아래 칸에 채웁니다.
     재료에 없는 내용은 쓰지 않도록 지시하지만 초안일 뿐이니 아래에서 고쳐 주세요. 제목만 있는 재료가 많으면 내용이 얕아집니다.</p>
   {% if data.draft_sources %}
-  <details class="basis"><summary>초안의 항목별 근거 재료 보기{% if data.draft_flags %} · <b>숫자 확인 {{ data.draft_flags|length }}건</b>{% endif %}</summary>
+  <details class="basis"><summary>초안의 항목별 근거 재료 보기{% if data.draft_flags %} · <b>확인할 점 {{ data.draft_flags|length }}건</b>{% endif %}</summary>
     {% if data.draft_flags %}<div class="warnbox"><b>확인</b><ul class="plain">{% for f in data.draft_flags %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
     {% for sec in data.draft_sources %}
     <h3 class="sub">{{ sec.section }}</h3>

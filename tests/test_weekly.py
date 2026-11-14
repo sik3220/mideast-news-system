@@ -134,3 +134,30 @@ def test_generating_again_keeps_only_the_latest_file(conn, data_dir):
     (folder / "weekly_c.docx").write_bytes(b"x")
     main._record(conn, "weekly", "2026-11-08", "weekly_c.docx", "v", [])
     assert sorted(p.name for p in folder.iterdir()) == ["daily_b.pptx", "weekly_c.docx"]     # 2주 넘은 파일은 지운다
+
+
+def test_shape_check_flags_items_longer_than_the_real_report():
+    """손으로 쓴 보고서의 분량(머리줄 한 줄 반, 하위 줄 0~2개, 머리줄에 사건 하나)을 넘는 항목을 표시한다."""
+    long_head = {"head": "11.10, Al-Zaidi 총리, 내각 내규(각료회의 절차규칙) 개정을 통해 총리실 자문관·전문가 수를 40명으로 제한하고 자문위원회 위원장에 장관급 권한 부여",
+                 "subs": ["* 하나", "* 둘", "* 셋", "* 넷"]}
+    two_events = {"head": "11.12, Trump 대통령, 협상 기조 선회, 11.13 Vance 부통령에게 다른 업무 지시", "subs": []}
+    fine = {"head": "11.9, KRG 총리, Al-Zaidi 총리와 ’27년 예산 배분 논의", "subs": ["* 12.68%에서 14.14%로 상향 요구"]}
+    flags = weekly.check_shape([long_head, two_events, fine])
+    assert len(flags) == 3
+    assert "머리줄이 김" in flags[0] and "하위 줄이 많음(4개)" in flags[1] and "날짜가 둘 이상" in flags[2]
+
+
+def test_oil_section_is_one_sentence_per_day_without_sub_lines(conn):
+    draft = weekly.WeeklyDraft(politics=[], terror=[], intl=[], oil=[weekly.WItem(
+        head="11.12, 호르무즈 해협 유조선 사고에 따른 공급 차질 우려로 국제유가는 상승",
+        subs=["* 브렌트유 3.3% 상승한 95.82달러 마감"], sources=[])])
+    data = dict(WEEK)
+    weekly.apply_draft(data, draft, [])
+    assert data["oil"] == "11.12, 호르무즈 해협 유조선 사고에 따른 공급 차질 우려로 국제유가는 상승"
+
+
+def test_days_without_materials_are_reported(conn):
+    _seed(conn)                                                   # 재료는 11.10 에만 있다
+    data = dict(WEEK)
+    missing = weekly.missing_days(data, weekly.materials(conn, data))
+    assert "2026-11-10" not in missing and missing[0] == "2026-11-08" and len(missing) == 6

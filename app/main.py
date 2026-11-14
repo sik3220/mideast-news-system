@@ -635,7 +635,7 @@ def weekly_page(request: Request):
         pass
     return render(request, "weekly.html", start=start, data=data, saved=stored is not None, history=history,
                   materials=mats, sections=weekly.SECTIONS, security=weekly.security_list(mats), origin_labels=weekly.ORIGIN_LABELS,
-                  weekly_model=config.llm_weekly_model(), research_max=config.research_daily_max(), pending=sum(1 for m in mats if m.get("needs")), errors=errors, warnings=warnings, total=total,
+                  missing=weekly.missing_days(data, mats), weekly_model=config.llm_weekly_model(), research_max=config.research_daily_max(), pending=sum(1 for m in mats if m.get("needs")), errors=errors, warnings=warnings, total=total,
                   stat_fields=weekly_word.STAT_FIELDS, oil_fields=weekly_word.OIL_FIELDS,
                   template_ok=config.WEEKLY_TEMPLATE.exists(), msg=request.query_params.get("msg", ""),
                   version=config.WEEKLY_TEMPLATE_VERSION)
@@ -682,6 +682,16 @@ async def weekly_save(request: Request):
             with db.session() as c:
                 return weekly.make_draft(c, data, demo=config.demo_mode())[1]
         msg = await run_in_threadpool(work)
+    elif action == "collect":
+        # 기간 전체를 다시 수집한다. 일일로 수집하지 않은 날짜의 기사도 주간 재료에 들어오게 한다.
+        def work_collect():
+            with db.session() as c:
+                run_id = pipeline.run_collection(c, data["period_start"], data["period_end"])
+                pipeline.recompute(c, config.demo_mode())
+                return pipeline.last_run(c)
+        run = await run_in_threadpool(work_collect)
+        new = sum(s["new_count"] for s in run["sources"])
+        msg = f"{data['period_start'][5:].replace('-', '.')}~{data['period_end'][5:].replace('-', '.')} 기간을 수집했습니다 ({run['status_text']}, 새 기사 {new}건)."
     elif action == "oil":
         def work_oil():
             with db.session() as c:

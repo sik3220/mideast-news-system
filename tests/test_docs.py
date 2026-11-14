@@ -23,7 +23,7 @@ WEEKLY = {"period_start": "2026-11-12", "period_end": "2026-11-18", "report_date
           "oil_prices": [{"date": "11.17", "dubai": "80", "brent": "81.5", "wti": "79.25"},
                          {"date": "11.18", "dubai": "81", "brent": "82", "wti": "80"}],
           "oil_source": "시험", "intl": [{"title": "시험 주제", "body": "11.12, 국제 항목\n* 하위 줄"}],
-          "impact": "영향 문단 하나\n\n영향 문단 둘"}
+          "impact": "영향 문단 하나 — 임직원 안전조치 강화\n\n영향 문단 둘 — 비상대응 태세 유지"}
 
 
 def test_parse_items():
@@ -101,7 +101,7 @@ def test_word_totals_and_prices_match_input(tmp_path):
     order = ["이라크 국내 상황", "정국 / 치안", "정치권 동향", "11.12, 시험 주체, 정치 항목\n* 하위 줄", "11.13, 둘째 항목",
              "이라크 주간 테러 상황", "11.13, 치안 항목\n* 하위 줄", "경제", "국제유가 관련 동향", "11.17, 시험 설명",
              "11.18, 전일 대비 소폭 상승", "국제사회", "시험 주제", "11.12, 국제 항목\n* 하위 줄",
-             "그룹 / 건설에 미치는 영향", "영향 문단 하나", "영향 문단 둘"]
+             "그룹 / 건설에 미치는 영향", "영향 문단 하나 — 임직원 안전조치 강화", "영향 문단 둘 — 비상대응 태세 유지"]
     assert [x.strip() for x in p if x.strip()][2:] == order
     assert not any("Al-Zaidi" in x for x in p)           # 원본의 지난 내용이 남지 않는다
 
@@ -246,3 +246,21 @@ def test_daily_download_name_uses_the_usual_file_name():
     assert download_name("daily", "2026-11-09") == "일일정보보고(11.9).pptx"
     assert download_name("daily", "2026-11-14") == "일일정보보고(11.14).pptx"
     assert download_name("weekly", "2026-11-12") == "건설_이라크 주간 종합상황보고(11월 19일).docx"
+
+
+def test_table_values_that_look_wrong_are_warned_about():
+    """기간 밖 날짜, 다른 유종과 크게 다른 값, 한 유형에 몰린 통계, 빈 '영향' 구역을 알린다(생성은 막지 않는다)."""
+    data = dict(WEEKLY, impact="..", stats={k: ("10" if k == "attack" else "0") for k in WEEKLY["stats"]},
+                oil_prices=[{"date": "11.25", "dubai": "90", "brent": "80", "wti": "82"},
+                            {"date": "11.18", "dubai": "89", "brent": "78", "wti": "21"}])
+    errors, warnings = weekly_word.check(data)
+    text = " / ".join(warnings)
+    assert errors == []
+    assert "11.25 가 보고 기간" in text and "‘서부텍사스유(WTI)’ $21" in text
+    assert "한 유형에만 몰려" in text and "영향’이 비어 있거나 너무 짧음" in text
+
+
+def test_glossary_uses_report_notation_for_currency_and_security_office():
+    from app import llm
+    assert llm.apply_glossary("16조 디나르 해외 차입 계획 부인") == "16조 IQD 해외 차입 계획 부인"
+    assert llm.apply_glossary("안보공보실(Security Media Cell), 공습 발표") == "보안당국, 공습 발표"

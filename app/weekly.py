@@ -254,14 +254,22 @@ WEEKLY_APPENDIX = """
 - **재료에 없는 사실·수치·날짜·인과를 지어내지 않는다.** 근거가 "제목만"·"원문 제목만"인 재료는 그 제목이 말하는 범위를 넘겨 풀어 쓰지 않는다.
 - 같은 내용이 여러 재료에 있으면 한 번만 쓴다. 가치가 낮거나 중복인 재료는 빼도 된다.
 - 주간 보고에는 출처를 적지 않는다. 머리줄 끝의 `(출처, 날짜)` 는 뗀다.
-- **재료의 세부 내용을 줄이지 않는다.** 원인·쟁점, 수치, 일정·후속 절차, 발언 요지가 재료에 있으면 하위 줄로 살린다. 제목만 남긴 얕은 항목을 만들지 않는다.
+**분량은 실제 보고서에 맞춘다: 구체적이되 짧게.**
+- 머리줄: **사건 하나만** 쓴다. 50자 안팎(길어도 70자). 날짜는 맨 앞 하나만 두고, 머리줄 안에 다른 날짜의 사건을 이어 붙이지 않는다.
+- 하위 줄: **0~2개**. 한 줄에 사실 하나, 60자 안팎. 머리줄로 충분하면 쓰지 않는다. 같은 사안의 경과를 엮은 항목만 3개까지 쓴다(경과는 `* M.D, …`).
+- 넣는 것: 결정·조치의 핵심, 금액·비율·규모, 다음 일정·조건, 상대방의 반응·평가(`☞`).
+- 빼는 것: 절차의 세부(자격 요건, 관보 게재, 조문 번호), 취재 경위("○○가 문서를 확인"), 현장 묘사, 과거 배경 나열, 발언 매체·플랫폼·진행자(예: "Truth Social에서", "○○ 인터뷰에서").
+- 발언은 요지로 풀어 쓴다. 긴 직접 인용("…")을 쓰지 않고, 꼭 필요한 짧은 표현만 작은따옴표(‘ ’)로 쓴다.
+- 연도는 `’27년` 식으로 쓴다. "지난해·이달·어제·최근" 같은 상대 시점은 날짜(M.D 또는 ’YY년 M월)로 바꿔 쓰고, 알 수 없으면 쓰지 않는다.
+- 이라크 통화는 IQD, 이라크 보안 관련 공보 기구는 "보안당국"으로 쓴다.
+- 재료가 길면 위 기준에 맞게 **줄인다**. 재료의 하위 줄을 모두 옮기지 않는다. 다만 재료에 있는 금액·일정 같은 핵심 수치는 남긴다.
 - 표기는 5절을 반드시 지킨다: 외국 인명·지명은 로마자 + 직함(Trump 대통령, Al-Zaidi 총리, Baghdad, Kirkuk州), 美-이란, 對이란. 정당·연합은 보고서 표기(시아조정기구, 법치국가연합, 재건발전연합, 사디쿤 운동).
 - politics 에서는 정치권(정당·연합·지도자) 동향, 총리의 주요 조치·발언, 주택·건설 정책을 빠뜨리지 않는다.
 
 ## 구역
 - politics: 이라크 국내 정치·정부·의회·경제 정책·비스마야/한화/NIC 관련. 날짜순.
 - terror: 이라크 내 테러·대테러 작전·치안 사건의 상세. 날짜순.
-- oil: 국제유가 동향. 날짜별로 **등락의 원인**을 한 문장으로 쓴다: `M.D, [원인이 된 사건·발언]에 따른 [시장의 해석]으로 국제유가는 [상승/하락/수준]`. 재료에 있는 내용만 쓰고 가격 숫자를 만들어 내지 않는다.
+- oil: 국제유가 동향. **하위 줄을 쓰지 않는다(subs 는 빈 목록).** 가격($)과 등락률(%)을 쓰지 않는다. 날짜별로 **등락의 원인**을 한 문장으로 쓴다: `M.D, [원인이 된 사건·발언]에 따른 [시장의 해석]으로 국제유가는 [상승/하락/수준]`. 재료에 있는 내용만 쓰고 가격 숫자를 만들어 내지 않는다.
 - intl: 이라크 밖의 역내·국제 사안. 주제별 소제목으로 묶는다. <previous_titles> 의 소제목이 맞으면 그대로 쓰고, 맞는 것이 없을 때만 같은 형식으로 새로 만든다.
 - 해당 재료가 없는 구역은 빈 목록으로 둔다.
 
@@ -309,6 +317,32 @@ def check_numbers(draft: WeeklyDraft, mats: list[dict]) -> list[str]:
     return list(dict.fromkeys(flags))
 
 
+MAX_HEAD_CHARS = 70
+MAX_SUBS = 3
+_DATE_IN_TEXT = re.compile(r"(?<![\d.])\d{1,2}\.\d{1,2}(?![\d.%])")
+
+
+def check_shape(items) -> list[str]:
+    """항목의 분량을 실제 보고서 기준과 대조한다: 머리줄이 길거나, 하위 줄이 많거나, 머리줄에 사건이 둘 들어간 경우."""
+    flags = []
+    for it in items:
+        head, subs = (it.head, it.subs) if hasattr(it, "head") else (it["head"], it["subs"])
+        name = f"‘{head[:28]}…’"
+        if len(head) > MAX_HEAD_CHARS:
+            flags.append(f"{name} 머리줄이 김({len(head)}자) — 사건 하나로 줄이기")
+        if len(subs) > MAX_SUBS:
+            flags.append(f"{name} 하위 줄이 많음({len(subs)}개) — 핵심 1~2개만 남기기")
+        if len(_DATE_IN_TEXT.findall(head)) >= 2:
+            flags.append(f"{name} 머리줄에 날짜가 둘 이상 — 사건을 나누거나 경과를 하위 줄로")
+    return flags
+
+
+def missing_days(data: dict, mats: list[dict]) -> list[str]:
+    """기간 가운데 재료가 하나도 없는 날짜. 그날은 수집을 하지 않았을 가능성이 크다."""
+    have = {m["day"] for m in mats}
+    return [d for d in _days(data["period_start"], data["period_end"]) if d not in have]
+
+
 def _all_items(draft: WeeklyDraft) -> list[WItem]:
     return [*draft.politics, *draft.terror, *draft.oil, *(it for g in draft.intl for it in g.items)]
 
@@ -324,6 +358,8 @@ EDIT_KEYS = ("politics", "terror", "oil", "intl")
 def apply_draft(data: dict, draft: WeeklyDraft, mats: list[dict]) -> None:
     """초안을 편집 칸에 채운다. 직전 내용은 되돌릴 수 있게 보관하고, 항목별 근거와 숫자 점검을 함께 남긴다."""
     data["backup"] = {k: data.get(k) for k in EDIT_KEYS}
+    for it in draft.oil:
+        it.subs = []                                     # 유가는 날짜당 한 문장(원본 형식). 하위 줄을 붙이지 않는다
     data["politics"], data["terror"], data["oil"] = _text(draft.politics), _text(draft.terror), _text(draft.oil)
     data["intl"] = [{"title": g.title.strip(), "body": _text(g.items)} for g in draft.intl if g.items] \
         or [{"title": "", "body": ""}]
@@ -335,7 +371,7 @@ def apply_draft(data: dict, draft: WeeklyDraft, mats: list[dict]) -> None:
                                                               f"{by_n[n]['head'][:60]}" for n in it.sources if n in by_n]}
                                     for it in items]}
         for name, items in sections if items]
-    data["draft_flags"] = check_numbers(draft, mats)
+    data["draft_flags"] = check_numbers(draft, mats) + check_shape(_all_items(draft))
     used = {n for it in _all_items(draft) for n in it.sources}
     data["draft_unused"] = [f"{timeutil.md(m['day'])} {m['head'][:60]}" for m in mats if m["n"] not in used]
 
