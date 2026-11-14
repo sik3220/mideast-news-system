@@ -10,7 +10,7 @@
     {{ a.source_name or a.source_domain or '출처 미상' }} · 발표 {{ a|when }} · 수집 {{ a.first_seen_at|local }} (바그다드)
     {% if a.lang %} · {{ lang_names.get(a.lang, a.lang) }}{% endif %} · 검색 경로 {{ a.provider }}
   </p>
-  <p><a class="btn primary" href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문 열기</a>
+  <p>{% if a.url.startswith('http') %}<a class="btn primary" href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문 열기</a>{% else %}<span class="chip">직접 추가한 항목 (원문 주소 없음)</span>{% endif %}
     <label class="inline" style="display:inline-flex;margin-left:12px">
       <input type="checkbox" data-select="{{ a.id }}" {{ 'checked' if a.selected }}> 보고서에 쓸 기사로 선택</label></p>
   <div class="chips">
@@ -23,7 +23,7 @@
     {% for v in a.verification %}<span class="chip {{ 'warn' if '미확인' in v or '미상' in v else '' }}">{{ v }}</span>{% endfor %}
     {% if a.stage %}<span class="chip">단계: {{ a.stage }}</span>{% endif %}
   </div>
-  <p class="hint">원문 본문은 가져오지 않습니다. 요약은 {{ '제목과 검색 요약' if a.snippet else '제목' }}만을 근거로 하며, 세부 내용은 원문에서 확인해야 합니다.
+  <p class="hint">{% if a.summary_basis == '본문 기반' %}이 요약은 붙여 넣은 원문 본문을 근거로 만들었습니다.{% else %}원문 본문은 자동으로 가져오지 않습니다. 지금 요약은 {{ '제목과 검색 요약' if a.snippet else '제목' }}만을 근거로 하므로, 세부 내용은 원문에서 확인하거나 아래에 본문을 붙여 넣어 다시 만드세요.{% endif %}
     추천 점수는 중요도이고 사실 확인 여부와 별개입니다.</p>
   {% if a.summary_flags %}<div class="errbox"><b>요약 점검</b><ul class="plain">{% for f in a.summary_flags %}<li>{{ f }}</li>{% endfor %}</ul></div>{% endif %}
 
@@ -46,9 +46,19 @@
       <span class="meta">고친 문장은 다음 요약의 예시로 쓰입니다</span>
     </div>
   </form>
+  <form method="post" action="/article/{{ a.id }}/summarize_body" style="margin-top:14px" data-busy>
+    <input type="hidden" name="back_qs" value="{{ back_qs }}">
+    <label><b>원문 본문 붙여넣기</b> — 원문을 열어 본문을 복사해 넣으면, 본문 전체에서 핵심을 뽑아 제목 줄과 하위 항목(*, ☞)을 다시 씁니다. 본문은 저장하지 않습니다.
+      <textarea name="body" rows="7" placeholder="기사 본문을 여기에 붙여 넣으세요"></textarea></label>
+    <div class="row" style="margin-top:6px">
+      <button class="primary" type="submit" {{ 'disabled' if not llm_ready }}>본문으로 요약 만들기</button>
+      <span class="spinner" role="status">본문을 읽는 중…</span>
+      {% if not llm_ready %}<span class="meta">요약 설정 필요 (ANTHROPIC_API_KEY)</span>{% endif %}
+    </div>
+  </form>
   <form method="post" action="/article/{{ a.id }}/summarize" style="margin-top:10px" data-busy>
     <input type="hidden" name="back_qs" value="{{ back_qs }}">
-    <button type="submit" {{ 'disabled' if not llm_ready }}>{{ '다시 요약' if a.summary_status == 'ok' else 'Claude 로 요약 만들기' }}</button>
+    <button type="submit" {{ 'disabled' if not llm_ready }}>{{ '제목만으로 다시 요약' if a.summary_status == 'ok' else '제목만으로 요약 만들기' }}</button>
     {% if not llm_ready %}<span class="meta">요약 설정 필요 (ANTHROPIC_API_KEY)</span>{% else %}<span class="meta">모델 {{ llm_model }}</span>{% endif %}
     <span class="spinner" role="status">요약 중…</span>
   </form>

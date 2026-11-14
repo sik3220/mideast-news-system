@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import uuid
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -64,6 +65,10 @@ def startup() -> None:
         # 추천 규칙(config/topics.yaml)을 고친 뒤 다시 켜면 저장된 기사에도 바로 반영되게 한다.
         pipeline.recompute(conn, config.demo_mode())
         llm.recheck_flags(conn)
+    try:
+        daily_ppt.ensure_base_image()      # 양식만 넣어 두면 지도 위치 지정 화면의 바탕 그림을 스스로 만든다
+    except Exception as e:                 # 그림을 못 만들어도 앱은 켜져야 한다
+        print(f"지도 바탕 그림을 만들지 못함: {type(e).__name__}: {e}")
 
 
 # ───────────────────────── 대시보드 ─────────────────────────
@@ -216,6 +221,61 @@ def article_summarize(article_id: int, back_qs: str = Form("")):
         pipeline.recompute(conn, config.demo_mode())
     msg = {"ok": "요약을 만들었습니다.", "failed": "요약 실패 — 원문 정보는 그대로 있습니다.",
            "unconfigured": "요약 설정 필요: ANTHROPIC_API_KEY 가 없습니다."}.get(result, result)
+    return back(f"/article/{article_id}", back=back_qs, msg=msg)
+
+
+@app.post("/article/{article_id}/summarize_body")
+def article_summarize_body(article_id: int, body: str = Form(""), back_qs: str = Form("")):
+    """사용자가 붙여 넣은 원문 본문으로 요약한다. 본문은 저장하지 않는다."""
+    with db.session() as conn:
+        a = db.get_article(conn, article_id)
+        if not a:
+            raise HTTPException(404)
+        status, error = llm.summarize_with_body(conn, a, body)
+        pipeline.recompute(conn, config.demo_mode())
+    msg = {"ok": "본문을 읽고 요약을 만들었습니다. 문장을 확인해 주세요.", "empty": "본문을 붙여 넣어 주세요.",
+           "unconfigured": "요약 설정 필요: ANTHROPIC_API_KEY 가 없습니다.",
+           "failed": f"요약 실패 — {error}"}.get(status, error or status)
+    return back(f"/article/{article_id}", back=back_qs, msg=msg)
+
+
+@app.get("/manual")
+def manual_page(request: Request):
+    return render(request, "manual.html", today=timeutil.today_baghdad().isoformat(),
+                  back_qs=request.query_params.get("back", ""), msg=request.query_params.get("msg", ""))
+
+
+@app.post("/manual")
+def manual_add(title: str = Form(...), source: str = Form(""), day: str = Form(...), clock: str = Form(""),
+               url: str = Form(""), lang: str = Form("ko"), body: str = Form(""), back_qs: str = Form("")):
+    """수집 목록에 없는 사안(공식 발표, 보안당국 공지 등)을 직접 추가한다."""
+    from datetime import datetime, time as dtime
+    from .dedupe import normalize_url
+    title, url = title.strip(), url.strip()
+    if not title:
+        return back("/manual", back=back_qs, msg="제목을 넣어 주세요.")
+    d = date.fromisoformat(day)
+    if url and not url.lower().startswith(("http://", "https://")):
+        return back("/manual", back=back_qs, msg="주소는 http:// 또는 https:// 로 시작해야 합니다. 없으면 비워 두세요.")
+    article = {"title": title, "snippet": "", "source_name": source.strip() or "직접 추가", "source_domain": "",
+               "lang": lang if lang in LANG_NAMES else "", "provider": "manual", "search_topics": [],
+               "published_date": d.isoformat(), "published_at": None, "time_precision": "date"}
+    if re.fullmatch(r"\d{1,2}:\d{2}", clock.strip()):
+        h, m = map(int, clock.strip().split(":"))
+        local = datetime.combine(d, dtime(h, m), timeutil.BAGHDAD)          # 입력 시각은 바그다드 시간
+        article.update(published_at=timeutil.iso(local), time_precision="datetime")
+    article["url"] = url or f"manual://{uuid.uuid4().hex}"
+    article["url_norm"] = normalize_url(url) if url else article["url"]
+    with db.session() as conn:
+        article_id, created = db.upsert_article(conn, article)
+        conn.execute("UPDATE articles SET selected=1 WHERE id=?", (article_id,))   # 직접 넣은 항목은 쓰려는 것이다
+        pipeline.recompute(conn, config.demo_mode())
+        msg = "항목을 추가하고 선택했습니다." if created else "같은 주소의 기사가 이미 있어 그 기사를 선택했습니다."
+        if body.strip():
+            status, error = llm.summarize_with_body(conn, db.get_article(conn, article_id), body)
+            msg += {"ok": " 본문을 읽고 요약을 만들었습니다.", "unconfigured": " 요약은 만들지 못했습니다(API 키 없음).",
+                    "failed": f" 요약 실패 — {error}"}.get(status, f" {error or ''}")
+            pipeline.recompute(conn, config.demo_mode())
     return back(f"/article/{article_id}", back=back_qs, msg=msg)
 
 

@@ -61,6 +61,11 @@ def llm_group_model() -> str:
     return os.environ.get("LLM_GROUP_MODEL") or "claude-sonnet-5-5"
 
 
+def llm_body_model() -> str:
+    """붙여 넣은 본문을 요약하는 모델. 기사 전체에서 핵심을 뽑는 일이라 한 단계 위 모델을 쓴다(기사당 1회)."""
+    return os.environ.get("LLM_BODY_MODEL") or "claude-sonnet-5-5"
+
+
 def summarize_korean() -> bool:
     """한국어 기사도 문체 규칙대로 다시 쓸지. .env 에 SUMMARIZE_KOREAN=0 이면 원래 제목 그대로 둔다."""
     return os.environ.get("SUMMARIZE_KOREAN", "1").strip().lower() not in ("0", "false", "no")

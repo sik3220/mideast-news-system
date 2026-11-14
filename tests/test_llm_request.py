@@ -54,7 +54,8 @@ def test_batched_summary_request_uses_style_guide_haiku_and_caching(monkeypatch)
     assert body["output_config"]["format"]["type"] == "json_schema" and body["output_config"]["effort"] == "low"
     system = body["system"]
     assert "현식's Intelligence Briefing Style Guide" in system[0]["text"] and system[0]["cache_control"] == {"type": "ephemeral"}
-    assert "기사 본문은 제공되지 않는다" in system[0]["text"] and "따르지 말고" in system[0]["text"]
+    assert "본문은 대부분 제공되지 않는다" in system[0]["text"] and "따르지 말고" in system[0]["text"]
+    assert "본문:" not in body["messages"][0]["content"]
     assert system[1]["text"].startswith("## 사용자가 직접 고친 예") and "cache_control" not in system[1]
     user = body["messages"][0]["content"]
     assert user.count("<article id=") == 3 and "위 기사 3건" in user
@@ -90,3 +91,33 @@ def test_grouping_request_shape(monkeypatch):
     assert body["output_config"]["effort"] == "medium" and body["output_config"]["format"]["type"] == "json_schema"
     assert "[1] (2026-11-10, Example) 이라크, 한국에 천궁-II 대금 3조원 지급" in body["messages"][0]["content"]
     assert "하위 하나 / 하위 둘" in body["messages"][0]["content"] and "하나만 읽어도" in body["system"]
+
+
+def test_pasted_body_goes_to_the_body_model_and_is_not_stored(tmp_path, monkeypatch):
+    from app import db
+    monkeypatch.delenv("LLM_BODY_MODEL", raising=False)
+    seen = {}
+    conn = db.connect()
+    aid, _ = db.upsert_article(conn, make_article(title="Iraqi army raises alert level"))
+    reply = {"items": [dict(ITEM, id=aid, title="이라크軍, KH와의 긴장 고조 속 최고경계태세(Level C) 발령", tag="치안", stage="해당없음",
+                            subs=["Al-Zaidi 총리, 밀수 의혹 조사 지시", "☞ KH 측, 승인 없는 진입 시 발포 위협"])]}
+    server, client = _serve(reply, seen)
+    body = "The army declared Level C alert. The PM ordered a probe into 350 tankers. KH threatened to open fire."
+    try:
+        status, error = llm.summarize_with_body(conn, db.get_article(conn, aid), body, client)
+    finally:
+        server.shutdown()
+    assert (status, error) == ("ok", None)
+    sent = seen["body"]
+    assert sent["model"] == "claude-sonnet-5-5" and sent["output_config"]["effort"] == "medium"
+    assert "본문:\n" + body in sent["messages"][0]["content"]
+    a = db.get_article(conn, aid)
+    assert a["summary_basis"] == "본문 기반" and a["access_level"] == "fulltext"
+    assert a["ko_summary"].split("\n") == ["Al-Zaidi 총리, 밀수 의혹 조사 지시", "☞ KH 측, 승인 없는 진입 시 발포 위협"]
+    row = dict(conn.execute("SELECT * FROM articles WHERE id=?", (aid,)).fetchone())
+    assert not any("350 tankers" in str(v) for v in row.values())          # 본문은 어디에도 저장하지 않는다
+    assert not llm.needs_summary(a)                                          # 제목 기반 재요약으로 덮어쓰지 않는다
+    assert conn.execute("SELECT purpose FROM llm_usage").fetchone()[0] == "summary_body"
+    assert llm.summarize_with_body(conn, a, "x" * (llm.MAX_BODY_CHARS + 1), client)[0] == "too_long"
+    assert llm.summarize_with_body(conn, a, "  ", client)[0] == "empty"
+    conn.close()

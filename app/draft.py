@@ -46,7 +46,7 @@ def item_lines(a: dict) -> list[str]:
         lines.append(f"  * [미확인] {' / '.join(notes)}")
     else:
         lines.append(f"  * [근거] {' / '.join(notes)}")
-    lines.append(f"  원문: {a['url']}")
+    lines.append(f"  원문: {a['url']}" if a["url"].startswith("http") else "  원문: (직접 추가한 항목 — 주소 없음)")
     return lines
 
 

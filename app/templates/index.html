@@ -14,7 +14,8 @@
     <p class="foot">
       {% for t in a.topics if t != 'korea_media' %}<span class="tag">{{ topics[t] }}</span>{% endfor %}
       {% if a.n_sources >= 2 %}<span>매체 {{ a.n_sources }}곳 보도</span>{% endif %}
-      <a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문</a>
+      {% if a.url.startswith('http') %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">원문</a>{% else %}<span>직접 추가</span>{% endif %}
+      {% if a.summary_basis == '본문 기반' %}<span>본문 기반</span>{% endif %}
       {% if a.related %}
       <details>
         <summary>같은 사건 {{ a.related|length }}건</summary>
@@ -101,6 +102,8 @@
       <span class="spinner" role="status">번역 중…</span>
     </form>
     {% endif %}
+    <a class="btn" href="/manual?back={{ qs|urlencode }}">직접 항목 추가</a>
+    <a class="btn" href="/daily?date={{ d_to }}">일일 PPT</a>
     <a class="btn primary" href="/draft?from={{ d_from }}&to={{ d_to }}">선택 기사로 초안</a>
   </span>
 </div>

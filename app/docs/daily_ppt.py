@@ -250,6 +250,47 @@ def read_markers(path: Path) -> dict:
             "economy": _shape(prs.slides[1], ID_ECONOMY).text_frame.text}
 
 
+def compose_base_image(out_png: Path, template: Path | None = None, width: int = 1600) -> None:
+    """LibreOffice 없이 만드는 지도 바탕 그림: 원본 1장의 그림(지도·확대 지도·로고)을 슬라이드 좌표대로 붙인다.
+
+    범례·Kurds 영역 같은 도형은 그려지지 않지만, 그림의 위치와 자르기를 그대로 따르므로
+    이 그림 위에서 지정한 표식 위치는 생성되는 PPT 의 위치와 같다.
+    """
+    import io
+
+    from PIL import Image
+    template = template or config.DAILY_TEMPLATE
+    prs = Presentation(str(template))
+    slide = prs.slides[0]
+    scale = width / prs.slide_width
+    canvas = Image.new("RGB", (width, round(prs.slide_height * scale)), "white")
+    # 큰 그림(지도)을 먼저, 작은 그림(확대 지도)을 나중에 붙여 원본처럼 위에 오게 한다.
+    pictures = sorted((sh for sh in slide.shapes if sh.shape_type == 13), key=lambda sh: -(sh.width * sh.height))
+    for sh in pictures:
+        img = Image.open(io.BytesIO(sh.image.blob)).convert("RGB")
+        w, h = img.size
+        box = (round(w * sh.crop_left), round(h * sh.crop_top), round(w * (1 - sh.crop_right)), round(h * (1 - sh.crop_bottom)))
+        img = img.crop(box).resize((max(1, round(sh.width * scale)), max(1, round(sh.height * scale))))
+        canvas.paste(img, (round(sh.left * scale), round(sh.top * scale)))
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(out_png, "PNG")
+
+
+def ensure_base_image() -> str | None:
+    """바탕 그림이 없으면 만든다. LibreOffice 가 있으면 전체 렌더링, 없으면 그림 합성. 반환: 만든 방식 또는 None."""
+    from . import preview
+    if config.DAILY_BASE_IMAGE.exists() or not config.DAILY_TEMPLATE.exists():
+        return None
+    if preview.available():
+        try:
+            render_base_image(config.DAILY_BASE_IMAGE)
+            return "rendered"
+        except Exception:
+            pass                       # 변환 도구가 일부만 있는 경우 등 → 합성으로 넘어간다
+    compose_base_image(config.DAILY_BASE_IMAGE)
+    return "composed"
+
+
 def render_base_image(out_png: Path, template: Path | None = None) -> None:
     """지도 위치 지정 화면에 쓸 바탕 그림: 1장에서 날짜·사건 목록·번호 표식을 뺀 모습."""
     import tempfile

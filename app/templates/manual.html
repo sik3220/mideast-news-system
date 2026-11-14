@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% set page = 'index' %}
+{% block title %}직접 항목 추가{% endblock %}
+{% block body %}
+<p><a href="/?{{ back_qs }}">← 목록으로</a></p>
+<section class="panel">
+  <h2 class="sec">직접 항목 추가</h2>
+  <p class="hint">뉴스 검색에 잡히지 않는 사안(공식 발표, 보안당국 공지, 내각회의 결과 등)을 넣습니다. 추가한 항목은 바로 선택되어 초안·일일 PPT·주간 Word 가져오기에 쓰입니다.</p>
+  <form method="post" action="/manual" data-busy>
+    <input type="hidden" name="back_qs" value="{{ back_qs }}">
+    <label>제목 (원문 제목이나 한 줄 요지)<input type="text" name="title" required></label>
+    <div class="row" style="margin-top:8px">
+      <label>출처 (예: INA, NIC, 보안당국)<input type="text" name="source" size="22"></label>
+      <label>날짜 (바그다드)<input type="date" name="day" value="{{ today }}" required></label>
+      <label>시각 (선택, 바그다드)<input type="time" name="clock"></label>
+      <label>언어<select name="lang">{% for k, v in lang_names.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+    </div>
+    <label style="margin-top:8px">원문 주소 (선택)<input type="text" name="url" placeholder="https://…"></label>
+    <label style="margin-top:8px">원문 본문 (선택) — 붙여 넣으면 문체 규칙대로 제목 줄과 하위 항목을 만듭니다. 본문은 저장하지 않습니다.
+      <textarea name="body" rows="10"></textarea></label>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" type="submit">추가</button>
+      <span class="spinner" role="status">추가하는 중…</span>
+      {% if not llm_ready %}<span class="meta">API 키가 없어 본문을 넣어도 요약은 만들지 않습니다.</span>{% endif %}
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -168,3 +168,24 @@ def test_daily_import_follows_the_report_convention():
                      "subs": ["* (11.12) Trump 대통령, 이란과 합의 불필요 표명", "* (11.13) IRGC, 보복 경고"]}]
     assert _daily_import(sel[3:4], "2026-11-12")[1][0] == {"head": "11.12, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.12)",
                                                             "subs": ["* Trump 대통령, 이란과 합의 불필요 표명"]}
+
+
+@needs_ppt
+def test_map_base_image_can_be_made_without_libreoffice(tmp_path):
+    """그림 합성으로 만든 바탕: 지도 그림이 원본 슬라이드와 같은 비율 위치에 놓인다."""
+    from PIL import Image
+    from pptx import Presentation
+    out = tmp_path / "base.png"
+    daily_ppt.compose_base_image(out, width=1600)
+    img = Image.open(out)
+    assert img.size == (1600, 900)                                   # 16:9 슬라이드와 같은 비율
+    prs = Presentation(str(config.DAILY_TEMPLATE))
+    big = max((s for s in prs.slides[0].shapes if s.shape_type == 13), key=lambda s: s.width * s.height)
+    cx, cy = (big.left + big.width / 2) / prs.slide_width, (big.top + big.height / 2) / prs.slide_height
+    inside = img.crop((int(cx * 1600) - 150, int(cy * 900) - 150, int(cx * 1600) + 150, int(cy * 900) + 150))
+    assert len(set(inside.getdata())) > 20                           # 지도 한가운데에는 그림이 있다
+    assert img.getpixel((1590, 450)) == (255, 255, 255)              # 지도 밖 오른쪽 끝은 빈 바탕
+    # 실제 보고서의 Kirkuk 표식 위치(설정의 기본값)가 지도 그림 안에 들어온다
+    kx, ky = config.topics_config()["map_locations"]["Kirkuk"]
+    assert big.left / prs.slide_width < kx < (big.left + big.width) / prs.slide_width
+    assert big.top / prs.slide_height < ky < (big.top + big.height) / prs.slide_height
