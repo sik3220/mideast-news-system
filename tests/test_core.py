@@ -669,3 +669,30 @@ def test_baghdad_time_works_without_timezone_database(monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(timeutil)
+
+
+# ───────── 화제성(여러 매체가 함께 다룬 사안) ─────────
+
+def test_stories_covered_by_many_outlets_rise_and_are_not_repeated(conn):
+    for i in range(8):                                    # 같은 사안을 8개 매체가 서로 다른 제목으로 보도
+        db.upsert_article(conn, make_article(f"https://s{i}.example/a", f"Iraq probe into Jurf smuggling widens, outlet {i} angle {i * 37}",
+                                             source_domain=f"s{i}.example", source_name=f"Outlet {i}"))
+    db.upsert_article(conn, make_article("https://lone.example/a", "Iraq minister opens a museum wing", source_domain="lone.example"))
+    _many(conn, 30, "Iraq attack")
+    pipeline.recompute(conn)
+    listed = pipeline.list_articles(conn, "2026-11-10", "2026-11-10")
+    hot = [a for a in listed if "Jurf" in a["title"]]
+    lone = next(a for a in listed if "museum" in a["title"])
+    assert all(a["burst"] in ("jurf", "smuggling", "probe", "widens", "outlet", "angle") for a in hot) and lone["burst"] is None
+    assert any("여러 매체가 다룬 화제" in r and "매체 8곳" in r for r in hot[0]["reasons"])
+    assert min(a["score"] for a in hot) > lone["score"]
+    shown, _, _ = pipeline.dashboard_list(conn, "2026-11-10", "2026-11-10", {}, False)
+    assert 1 <= sum("Jurf" in a["title"] for a in shown) <= 2      # 같은 화제는 추천에 2건까지만
+
+
+def test_ubiquitous_words_are_not_treated_as_a_story():
+    from app import salience
+    assert salience.tokens("Iraq says Iran talks with Trump continue in Baghdad") == {"continue"}
+    arts = [dict(make_article(title=f"Iraq Iran unique{i}", source_domain=f"d{i}.x"), id=i, score=10, reasons=[]) for i in range(10)]
+    salience.add_salience(arts, {"min_sources": 4})
+    assert all(a["burst"] is None and a["score"] == 10 for a in arts)

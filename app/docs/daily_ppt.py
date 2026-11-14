@@ -75,11 +75,21 @@ def _set_marker(el, number: int, color: str, left: int, top: int, shape_id: int)
     el.find(".//" + _q("a:t")).text = str(number)
 
 
+def date_label(d_from: str, d_to: str | None = None) -> str:
+    """날짜 상자 문구. 하루면 '2026. 11. 9', 주말 합본이면 원본처럼 '2026. 11. 12 ~ 13'."""
+    a = date.fromisoformat(d_from)
+    if not d_to or d_to == d_from:
+        return f"{a.year}. {a.month}. {a.day}"
+    b = date.fromisoformat(d_to)
+    tail = f"{b.day}" if (a.year, a.month) == (b.year, b.month) else f"{b.month}. {b.day}"
+    return f"{a.year}. {a.month}. {a.day} ~ {tail}"
+
+
 def _fill_slide1(prs, slide, data: dict, warnings: list[str]) -> None:
     d = date.fromisoformat(data["date"])
     date_box = _shape(slide, ID_DATE)
     runs = date_box._element.findall(".//" + _q("a:r"))
-    runs[0].find(_q("a:t")).text = f"{d.year}. {d.month}. {d.day} "
+    runs[0].find(_q("a:t")).text = date_label(data["date"], data.get("date_to")) + " "
     for r in runs[1:]:
         r.getparent().remove(r)
 
@@ -109,7 +119,8 @@ def _fill_slide1(prs, slide, data: dict, warnings: list[str]) -> None:
     end_proto = para_proto.find(_q("a:endParaRPr"))
     mar_l = int(ppr.get("marL", "0"))
 
-    lines = [f"{(e.get('time') or '').strip()} {e['text'].strip()}".strip() for e in events]
+    lines = [" ".join(x for x in ((e.get("day") or "").strip(), (e.get("time") or "").strip(), e["text"].strip()) if x)
+             for e in events]
     if not events:
         lines = [(data.get("no_event_text") or "").strip()]
     max_width = prs.slide_width - list_box.left - LIST_RIGHT_MARGIN

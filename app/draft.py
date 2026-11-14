@@ -38,7 +38,7 @@ def item_lines(a: dict) -> list[str]:
     source = a.get("source_name") or a.get("source_domain") or "출처 미상"
     lines = [f"- {day}, {head} ({source}, {_published(a)})"]
     if a.get("ko_summary"):
-        lines += [f"  * {x}" for x in a["ko_summary"].split("\n") if x.strip()]
+        lines += [f"  {x}" if x.startswith("☞") else f"  * {x}" for x in a["ko_summary"].split("\n") if x.strip()]
     elif not a.get("ko_title"):
         lines.append("  * (한국어 요약 없음 — 원문 제목 그대로)")
     notes = unverified_notes(a)

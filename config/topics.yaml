@@ -32,6 +32,15 @@ searches:
   - {lang: en, q: '"Central Bank of Iraq" OR "Iraqi dinar" OR "Iraq reserves"'}
   - {lang: ar, q: 'العراق "المنطقة الخضراء" OR السفارة OR تظاهرات OR مسيرة'}
   - {lang: en, q: 'Iraq Saudi OR Jordan OR Turkey OR Kuwait OR Syria talks OR visit OR border'}
+  # 아래는 주간 보고서 6주치·일일 보고서 12건에서 반복해 실린 사안의 검색
+  - {lang: en, q: 'Iraq housing OR "land plots" OR mortgage OR Rafidain OR "New Sadr City"'}
+  - {lang: ar, q: 'العراق الإسكان OR "قطع أراضي" OR "القروض السكنية" OR "مصرف الرافدين"'}
+  - {lang: en, q: 'Iraq parliament vote OR ministers OR "deputy prime minister" OR "Coordination Framework"'}
+  - {lang: en, q: 'Iraq "exchange rate" OR dinar OR "World Bank" OR IMF OR budget'}
+  - {lang: en, q: 'Iraq corruption court OR sentenced OR smuggling arrested'}
+  - {lang: en, q: 'US Treasury OR "State Department" Iraq sanctions OR militias OR waiver'}
+  - {lang: en, q: 'Houthi Saudi OR Aramco OR Yemen OR Sanaa'}
+  - {lang: ko, q: '후티 사우디 OR 예멘 OR 아람코'}
   - {lang: en, q: 'Brent WTI oil prices'}
   - {lang: ko, q: '국제유가 두바이유 OR 브렌트유'}
 
@@ -66,7 +75,7 @@ iraq_context: [이라크, iraq, iraqi, العراق, العراقي, baghdad, �
 categories:
   유가: [brent, wti, 두바이유, 브렌트유, 국제유가, "oil prices", "oil price", "crude prices", "أسعار النفط", برنت]
   테러: [테러, 폭탄, 자폭, ied, 급조폭발물, "suicide bomb", bombing, terror, isis, "islamic state", daesh, 암살, assassinat, إرهاب, داعش, انفجار, عبوة, اغتيال]
-  치안: [치안, 공격, 드론, 로켓, 무장단체, 민병대, 시위, 총격, 공습, 납치, attack, drone, rocket, militia, protests, protesters, demonstrat, clash, airstrike, kidnap, "security forces", هجوم, مسيرة, فصائل, تظاهرات, أمن, قصف]
+  치안: [치안, 경계태세, "highest alert", "high alert", "military units", تأهب, 공격, 드론, 로켓, 무장단체, 민병대, 시위, 총격, 공습, 납치, attack, drone, rocket, militia, protests, protesters, demonstrat, clash, airstrike, kidnap, "security forces", هجوم, مسيرة, فصائل, تظاهرات, أمن, قصف]
   경제: [경제, 신도시, 사업, 수주, 회수, 예산, 유가, 원유, 석유, 가스, 투자, 계약, 미수금, 지급, 환율, 수출, 건설, budget, oil, crude, gas, investment, contract, payment, economy, dinar, export, opec, اقتصاد, موازنة, نفط, استثمار, عقد]
   국제: [미국, 이란, 이스라엘, 사우디, 튀르키예, 시리아, 호르무즈, 제재, 외교, 유엔, "united states", washington, iran, israel, saudi, turkey, syria, hormuz, sanction, diplomat, 美, أمريكا, إيران, إسرائيل]
   정치: [총리, 대통령, 의회, 내각, 정부, 선거, 장관, 법안, 정당, "prime minister", president, parliament, cabinet, government, election, minister, رئيس الوزراء, مجلس الوزراء, مجلس النواب, البرلمان, الحكومة, انتخابات]
@@ -105,7 +114,7 @@ themes:
   - {id: militia, label: 무장단체 동향, needs_iraq: true, bonus: 15,
      words: [무장단체, 민병대, "kataib", "kata'ib", hezbollah, pmf, "popular mobilization", militia, militias, "coordination framework", 시아조정기구, الفصائل, "الحشد الشعبي", "الإطار التنسيقي", "كتائب حزب الله"]}
   - {id: iraq_attack, label: 이라크 내 공격·요격, needs_iraq: true, bonus: 15, section: 치안,
-     words: ["green zone", 그린존, "المنطقة الخضراء", embassy, 대사관, السفارة, "drone attack", "rocket attack", intercept, 요격, 로켓, "طائرة مسيرة", مسيّرة, صاروخ, اعتراض, "roadside bomb", ied, عبوة, assassinat, 암살, اغتيال, kidnap, 납치]}
+     words: ["green zone", 그린존, "المنطقة الخضراء", embassy, 대사관, السفارة, "drone attack", "rocket attack", intercept, 요격, 로켓, "طائرة مسيرة", مسيّرة, صاروخ, اعتراض, "roadside bomb", ied, عبوة, assassinat, 암살, اغتيال, kidnap, 납치, grenade, 수류탄, explosion, blast, 폭발, انفجار, "alert level", "highest alert", "on alert", "high alert", 경계태세, تأهب, استنفار]}
   - {id: iraq_protest, label: 시위·소요, needs_iraq: true, bonus: 10, section: 치안,
      words: [tahrir, 시위, protests, protesters, demonstrat, "civil disobedience", تظاهرات, احتجاج, "ساحة التحرير", العصيان]}
   - {id: security_ops, label: 보안당국 발표, needs_iraq: true, bonus: 8,
@@ -113,24 +122,32 @@ themes:
   - {id: krg, label: KRG–중앙정부, needs_iraq: true, bonus: 15, section: 정치,
      words: [krg, barzani, "kurdistan region", 쿠르드 자치정부, 쿠르디스탄, "budget share", "إقليم كردستان", بارزاني, "حصة الإقليم"]}
   - {id: iraq_iran_us, label: 이라크–이란·미국 관계, needs_iraq: true, bonus: 15, cap: 3, section: 정치,
-     words: [envoy, ambassador, 대사, 중재, mediat, "trump", 트럼프, irgc, 혁명수비대, سفير, وساطة, "الحرس الثوري", savaya, barrack]}
+     words: [envoy, ambassador, 대사, 중재, mediat, "trump", 트럼프, irgc, 혁명수비대, سفير, وساطة, "الحرس الثوري", savaya, barrack, treasury, 재무부, "state department", 국무부, sanction, 제재, coalition, 연합군, withdrawal, 철군, 철수, "iran flights", "iranian flights", 항공편, 국경검문소, "terror sponsor", 테러지원국]}
   - {id: pm_action, label: 총리 조치·발언, needs_iraq: true, bonus: 12, cap: 3, section: 정치,
      words: ["al-zaidi", zaidi, الزيدي, "iraqi pm", "iraq's pm", "iraqi prime minister", "iraq's prime minister", "이라크 총리", "رئيس الوزراء العراقي"]}
   - {id: iraq_neighbors, label: 주변국 관계, needs_iraq: true, bonus: 12, section: 정치,
      words: [saudi, 사우디, السعودية, jordan, 요르단, الأردن, amman, turkey, türkiye, 튀르키예, تركيا, kuwait, 쿠웨이트, الكويت, syria, 시리아, سوريا, "border crossing", 국경]}
   - {id: iraq_finance, label: 재정·금융, needs_iraq: true, bonus: 12, section: 경제,
-     words: ["central bank", cbi, 중앙은행, "البنك المركزي", reserves, 외환보유, dinar, 디나르, الدينار, "dollar", 달러, الدولار, salaries, 급여, رواتب, budget, 예산, موازنة, 미수금]}
+     words: ["central bank", cbi, 중앙은행, "البنك المركزي", reserves, 외환보유, "exchange rate", 환율, "world bank", 세계은행, imf, 성장률, "سعر الصرف", dinar, 디나르, الدينار, "dollar", 달러, الدولار, salaries, 급여, رواتب, budget, 예산, موازنة, 미수금]}
+  - {id: housing, label: 주택·토지·건설 금융, needs_iraq: true, bonus: 15, section: 정치,
+     words: [housing, residential, "land plots", "plots of land", mortgage, "housing loan", "real estate", 주택, 토지, 필지, 분양, 신도시, 건설업, "new sadr city", الإسكان, السكنية, "قطع أراضي", "قطعة أرض", "القروض السكنية", العقاري, "مصرف الرافدين", rafidain]}
+  - {id: gov_formation, label: 내각·의회 구성, needs_iraq: true, bonus: 12, section: 정치,
+     words: ["deputy prime minister", "vice president", ministers, "cabinet lineup", "confidence vote", "parliament votes", "parliament approves", 장관, 부총리, 부통령, 임명안, 인선, "نواب رئيس", "التشكيلة الوزارية", "منح الثقة", "يصوت"]}
+  - {id: judiciary, label: 사법·부패·밀수 단속, needs_iraq: true, bonus: 10, section: 정치,
+     words: [corruption, 부패, sentenced, 선고, 징역, "federal court", "supreme court", 연방법원, 연방대법원, smuggling, 밀수, فساد, "المحكمة الاتحادية", تهريب, "arrest warrant", 체포영장]}
   - {id: korea_iraq, label: 한국–이라크, needs_iraq: true, bonus: 15,
      words: [천궁, cheongung, "m-sam", 대우건설, 현대건설, "한국 기업", "south korea", korean, 한국에, الكورية]}
   - {id: oil_price, label: 국제유가, needs_iraq: false, floor: 40, section: 유가,
      words: [brent, wti, 두바이유, 브렌트유, 국제유가, "oil prices", "oil price", "crude prices", "أسعار النفط", برنت]}
   - {id: korea_region, label: 한국 관련 역내 사안, needs_iraq: false, floor: 52, cap: 1, section: 국제,
      words: [청해부대, 파병, "한국 선박", "한국인", "korean vessel", "south korean navy"]}
+  - {id: saudi_houthi, label: 사우디–후티 분쟁, needs_iraq: false, floor: 38, cap: 2, section: 국제,
+     words: [houthi, houthis, 후티, aramco, 아람코, yemen, 예멘, sanaa, الحوثي, الحوثيين, "أرامكو", اليمن]}
   # 美-이란 협상·군사 결정처럼 보고서 '국제사회' 구역에 직접 실리는 사안
   - {id: us_iran_talks, label: 美–이란 협상·군사 결정, needs_iraq: false, floor: 38, section: 국제,
-     words: [vance, 밴스, rubio, 루비오, 국무장관, "secretary of state", witkoff, uranium, 농축, 핵물질, "nuclear", 핵 협상, 종전, ceasefire, "direct talks", 최고지도자, "supreme leader", "centcom", 중부사령부, "embassy staff", "ordered departure", evacuat, "대사관 인력", اليورانيوم, "وقف إطلاق النار"]}
+     words: [vance, 밴스, rubio, 루비오, 국무장관, "secretary of state", witkoff, uranium, 농축, 핵물질, "nuclear", 핵 협상, 종전, ceasefire, "direct talks", 최고지도자, "supreme leader", "centcom", 중부사령부, 중부사령관, treasury, 재무부, sanctions, 제재, "aircraft carrier", 항모, pentagon, 국방부, qatar, 카타르, pakistan, 파키스탄, mediation, 중재, "embassy staff", "ordered departure", evacuat, "대사관 인력", اليورانيوم, "وقف إطلاق النار"]}
   - {id: us_iran, label: 美·이스라엘–이란 분쟁, needs_iraq: false, floor: 30, section: 국제,
-     words: [irgc, 혁명수비대, hormuz, 호르무즈, netanyahu, 네타냐후, "israeli election", 이스라엘 총선, houthi, 후티, 이집트, egypt, "strike on iran", "iran war", "war with iran", 이란전, "이란 공습", "الحرس الثوري", هرمز]}
+     words: [irgc, 혁명수비대, hormuz, 호르무즈, netanyahu, 네타냐후, "israeli election", 이스라엘 총선, 이스라엘, 이집트, egypt, "strike on iran", "iran war", "war with iran", 이란전, "이란 공습", "الحرس الثوري", هرمز]}
 
 # 보고서가 자주 인용하는 매체(매체명·도메인의 일부). 가점만 주며 내용의 신뢰를 보증하는 뜻은 아니다.
 preferred_sources: [shafaq, شفق, ina.iq, "iraqi news agency", واع, almada, المدى, aljazeera, "al jazeera", الجزيرة, rudaw, kurdistan24, 964media, reuters, 연합뉴스, "the national", amwaj, "al-monitor", "the new region"]
@@ -146,7 +163,18 @@ recommend:
   must_cap: {cabinet: 2}                      # 주제별 최대 건수(없으면 전부). 비스마야·한화·NIC 는 제한 없음
   # 구역별 정원. 실제 보고서의 분량 비율을 따랐다. 정원은 limit 을 넘더라도 채운다(그래서 '20건 안팎').
   quota: {정치: 5, 치안: 3, 테러: 2, 경제: 3, 유가: 1, 국제: 4}
+  # 화제성: 같은 기간에 여러 매체의 제목에 함께 나온 낱말을 그날의 주요 사안으로 보고 가점한다(app/salience.py).
+  #   min_sources 이 낱말을 쓴 매체 수의 하한 / max_bonus 가점 상한 / cap 같은 화제로 추천에 넣을 최대 건수
+  burst: {min_sources: 4, max_share: 0.12, max_bonus: 20, cap: 2}
   theme_cap: 2                                # 한 구역 안에서 같은 관심 사안은 최대 2건(한 사안이 구역을 독차지하지 않게). floor 형 사안은 제외
+
+# 일일 PPT 지도의 지역별 표식 위치(슬라이드 가로·세로에 대한 비율). 실제 일일 보고서의 표식 위치에서 가져왔다.
+# 편집 화면에서 지역명을 넣으면 "기억한 위치 사용"으로 제안된다. 직접 지정해 저장한 위치가 있으면 그것이 우선한다.
+map_locations:
+  Kirkuk: [0.321, 0.336]
+  Diyala: [0.352, 0.471]
+  Dhi-Qar: [0.422, 0.699]
+  Baghdad: [0.328, 0.505]
 
 # Claude 모델별 단가(100만 토큰당 [입력, 출력] 달러). 화면의 "오늘 사용 추정 금액" 계산에만 쓴다.
 # 실제 청구액은 Anthropic 콘솔에서 확인한다. 단가가 바뀌면 여기를 고친다.

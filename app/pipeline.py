@@ -5,7 +5,7 @@ import json
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
-from . import db, dedupe, ranking
+from . import db, dedupe, ranking, salience
 from .collect import gdelt, google_news
 from .collect.base import SearchResult, SearchSpec
 from .config import topics_config
@@ -118,13 +118,19 @@ def list_articles(conn, d_from: str, d_to: str, *, keyword: str = "", category: 
         groups[a["event_id"] or a["id"]].append(a)
     kw = keyword.strip().lower()
     cfg = topics_config()
-    out = []
+    in_range = []
     for a in articles:
         within = in_period(a["published_at"], a["published_date"], a["time_precision"], d_from, d_to)
         if within is False or (within is None and not include_undated):
             continue
         if ranking.is_blocked_source(a, cfg):
             continue
+        a["undated"] = within is None
+        in_range.append(a)
+    # 화제성은 필터와 무관하게 기간 안 기사 전체로 계산한다.
+    salience.add_salience(in_range, (cfg.get("recommend") or {}).get("burst") or {})
+    out = []
+    for a in in_range:
         if category and a["category"] != category:
             continue
         if region and a["region"] != region:
@@ -138,7 +144,6 @@ def list_articles(conn, d_from: str, d_to: str, *, keyword: str = "", category: 
         group = groups[a["event_id"] or a["id"]]
         a["n_sources"] = dedupe.independent_sources(group)
         a["verification"] = ranking.verification(a, a["n_sources"])
-        a["undated"] = within is None
         out.append(a)
     # 관심 주제 탭에서는 그 주제를 직접 다룬 기사를 먼저, 검색에만 걸린 기사를 뒤에 둔다.
     out.sort(key=lambda a: (bool(topic) and topic not in a["topics"], ranking.sort_key(a)))
@@ -178,9 +183,18 @@ def pick_recommended(events: list[dict], cfg: dict | None = None, scale: float =
     picked: dict[int, dict] = {}
     over_cap: set[int] = set()                           # 주제 상한을 넘은 사건: 다른 구역 자리도 차지하지 않게 한다
 
+    burst_cap = int((rule.get("burst") or {}).get("cap", 0))
+    burst_used: dict[str, int] = defaultdict(int)       # 같은 화제(같은 낱말·같은 언어)가 추천을 채우지 않게 한다
+
+    def same_story_full(a: dict) -> bool:
+        key = (a.get("lang"), a.get("burst"))
+        return bool(burst_cap and a.get("burst") and burst_used[key] >= round(burst_cap * scale))
+
     def take(a: dict, reason: str) -> None:
         a["pick_reason"] = reason
         picked[a["id"]] = a
+        if a.get("burst"):
+            burst_used[(a.get("lang"), a["burst"])] += 1
 
     used: dict[str, int] = defaultdict(int)
     for a in events:                                     # events 는 이미 점수순
@@ -206,8 +220,8 @@ def pick_recommended(events: list[dict], cfg: dict | None = None, scale: float =
                 break
             capped = {t["id"]: round(int(t["cap"]) * scale) if "cap" in t else theme_cap for t in ranking.match_themes(a, cfg)
                       if "cap" in t or "floor" not in t}
-            if any(cap and seen[t] >= cap for t, cap in capped.items()):
-                continue                                 # 같은 사안이 이미 충분히 들어갔다
+            if any(cap and seen[t] >= cap for t, cap in capped.items()) or same_story_full(a):
+                continue                                 # 같은 사안·같은 화제가 이미 충분히 들어갔다
             for t in capped:
                 seen[t] += 1
             take(a, f"{section} 구역 상위")          # 정원은 limit 을 넘더라도 채운다
@@ -216,7 +230,7 @@ def pick_recommended(events: list[dict], cfg: dict | None = None, scale: float =
         for a in events:
             if len(picked) >= limit:
                 break
-            if a["id"] not in picked and not (skip_over_cap and a["id"] in over_cap):
+            if a["id"] not in picked and not (skip_over_cap and a["id"] in over_cap) and not same_story_full(a):
                 take(a, "점수 상위")
     for a in events:                                     # 선택한 기사는 제한과 무관하게 남긴다
         if a["id"] not in picked and (a["selected"] or any(r["selected"] for r in a["related"])):

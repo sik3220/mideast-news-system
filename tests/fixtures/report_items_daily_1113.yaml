@@ -1,0 +1,9 @@
+# 추천 점검 기준 3: 2026.11.12~13 일일 보고서(주말 합본)에 실린 사안. 실제 사용처럼 이틀 기간·20건 안팎 추천으로 본다.
+period: {from: "2026-11-12", to: "2026-11-13"}
+items:
+  - {name: "이라크軍, KH와 긴장 속 최고경계태세 발령", find: "level.?c|alert|경계태세|تأهب|استنفار"}
+  - {name: "총리, Jurf al-Sakhar 석유 밀수 의혹 조사 지시", find: "jurf|smuggl|밀수|جرف"}
+  - {name: "KH, 승인 없는 진입 시 발포 위협", find: "kata.?ib|kataib|\\bKH\\b|كتائب حزب الله"}
+  - {name: "Trump, 이란과 합의할 필요 없다", find: "trump.*(deal|agreement)|트럼프.*합의"}
+  - {name: "IRGC, 미군의 Sirik 레이더 공격 주장·보복 경고", find: "sirik|radar|레이더|سيريك"}
+  - {name: "Baghdad 폭발물로 민간인 중상 (1장 지도)", find: "baghdad.*(explos|blast|bomb)|바그다드.*폭발|بغداد.*(انفجار|عبوة|ناسفة)"}

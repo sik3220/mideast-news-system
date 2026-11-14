@@ -8,7 +8,7 @@
   <div class="body">
     <h3><a href="/article/{{ a.id }}?back={{ qs|urlencode }}" dir="auto">{{ a.published_date|md }}, {{ a.ko_title or a.title }}</a>
       <span class="src">({{ a.source_name or a.source_domain or '출처 미상' }}, {{ a.published_date|md }})</span></h3>
-    {% for line in (a.ko_summary or '').split('\n') if line.strip() %}<p class="sub">* {{ line }}</p>{% endfor %}
+    {% for line in (a.ko_summary or '').split('\n') if line.strip() %}<p class="sub">{{ line if line.startswith('☞') else '* ' ~ line }}</p>{% endfor %}
     {% for f in a.summary_flags %}<p class="sub flag">☞ {{ f }}</p>{% endfor %}
     {% if a.summary_status == 'failed' %}<p class="sub flag">☞ 번역 실패 — 원문 제목 그대로입니다</p>{% endif %}
     <p class="foot">

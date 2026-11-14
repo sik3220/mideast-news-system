@@ -16,6 +16,13 @@
 <input type="hidden" name="events_json" id="events-json">
 
 <section class="panel">
+  <div class="row">
+    <label>합본 종료일 (주말처럼 이틀치를 한 장에 쓸 때만)<input type="date" name="date_to" value="{{ data.date_to or '' }}" min="{{ day }}"></label>
+    <span class="meta">넣으면 날짜가 “2026. 11. 12 ~ 13” 형태가 되고, 선택 기사 가져오기도 이 기간으로 합니다.</span>
+  </div>
+</section>
+
+<section class="panel">
   <h2 class="sec">1장 · 일일 테러 / 대테러 상황</h2>
   <div class="grid2">
     <div>
@@ -47,11 +54,11 @@
     머리줄 끝의 <code>(출처, 날짜)</code> 는 원본처럼 한 단계 작은 글자로 들어갑니다.</p>
   <div class="grid2">
     <label>정치 / 치안<textarea name="politics" rows="12" placeholder="11.10, 주체, 내용 (출처, 11.10)&#10;* 세부사항">{{ data.politics }}</textarea></label>
-    <label>경제 / 국제<textarea name="economy" rows="12" placeholder="11.10, 주체, 내용 (출처, 11.10)&#10;* 세부사항">{{ data.economy }}</textarea></label>
+    <label>경제 / 국제<textarea name="economy" rows="12" placeholder="11.10, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.10)&#10;* 사실 하나&#10;* 사실 둘">{{ data.economy }}</textarea></label>
   </div>
   <button type="submit" name="action" value="import" style="margin-top:8px" {{ 'disabled' if not selected_count }}>
-    이 날짜에 선택한 기사 {{ selected_count }}건 가져오기</button>
-  <span class="meta">본문 끝에 덧붙입니다. 기존 내용은 지우지 않습니다.</span>
+    이 기간에 선택한 기사 {{ selected_count }}건 가져오기</button>
+  <span class="meta">이라크 국내 사안은 ‘정치 / 치안’에 기사별로, 국제 사안은 ‘경제 / 국제’에 “美-이란, 역내 분쟁 관련” 한 항목의 하위 줄로 들어갑니다. [유가]는 넣지 않습니다. 기존 내용은 지우지 않습니다.</span>
 </section>
 
 <section class="panel">
@@ -95,6 +102,7 @@ function render() {
       <select data-f="type" aria-label="사건 ${i + 1} 유형">${Object.entries(TYPES).map(([k, v]) =>
         `<option value="${k}" ${e.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <div class="line2">
+        <input type="text" value="${esc(e.day)}" data-f="day" placeholder="날짜(합본용, 예: 11.12)" style="flex:0 0 150px" aria-label="사건 ${i + 1} 날짜">
         <input type="text" value="${esc(e.place)}" data-f="place" placeholder="지역명 (위치 기억용)" list="places" aria-label="사건 ${i + 1} 지역명">
         <button type="button" data-act="arm">${arming === i ? '지도를 클릭하세요…' : '지도에서 위치 지정'}</button>
         <span>${e.x == null ? '<b style="color:#a12626">위치 미지정</b>' : '위치 지정됨'}</span>
@@ -140,7 +148,7 @@ box.addEventListener('click', ev => {
   render();
 });
 document.getElementById('add-event').addEventListener('click', () => {
-  events.push({time: '', place: '', text: '', type: 'terror'}); render();
+  events.push({time: '', day: '', place: '', text: '', type: 'terror'}); render();
   box.querySelector('.ev:last-of-type input[data-f=text]')?.focus();
 });
 if (map) {

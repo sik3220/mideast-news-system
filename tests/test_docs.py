@@ -140,3 +140,31 @@ def test_oil_description_is_checked_against_table():
     errors, warnings = weekly_word.check(dict(WEEKLY, oil_prices=falling))
     assert errors == [] and any("상승" in w and "11.18" in w for w in warnings)
     assert weekly_word.check(WEEKLY) == ([], [])
+
+
+@needs_ppt
+def test_weekend_deck_uses_date_range_and_dated_event_lines(tmp_path):
+    out = tmp_path / "d.pptx"
+    data = dict(DAILY, date="2026-11-12", date_to="2026-11-13",
+                events=[{"day": "11.12", "time": "16:01", "text": "Baghdad州, 시험 사건", "type": "terror", "x": 0.328, "y": 0.505}])
+    daily_ppt.generate(data, out)
+    r = daily_ppt.read_markers(out)
+    assert r["date"].strip() == "2026. 11. 12 ~ 13" and r["lines"] == ["11.12 16:01 Baghdad州, 시험 사건"]
+    assert daily_ppt.date_label("2026-10-31", "2026-11-01") == "2026. 10. 31 ~ 11. 1"
+
+
+def test_daily_import_follows_the_report_convention():
+    from app.main import _daily_import
+    base = dict(published_date="2026-11-12", published_at="2026-11-12T08:00:00Z", source_name="Shafaq", ko_summary="")
+    sel = [dict(base, category="치안", ko_title="이라크軍, 최고경계태세 발령", title="x"),
+           dict(base, category="경제", ko_title="CBI, 환율 인상 결정", title="x"),
+           dict(base, category="유가", ko_title="브렌트유 소폭 상승", title="x"),
+           dict(base, category="국제", ko_title="Trump 대통령, 이란과 합의 불필요 표명", title="x", source_name="Aljazeera"),
+           dict(base, category="국제", ko_title="IRGC, 보복 경고", title="x", source_name="Aljazeera",
+                published_date="2026-11-13", published_at="2026-11-13T08:00:00Z")]
+    pol, intl = _daily_import(sel, "2026-11-12", "2026-11-13")
+    assert [i["head"] for i in pol] == ["11.12, 이라크軍, 최고경계태세 발령 (Shafaq, 11.12)", "11.12, CBI, 환율 인상 결정 (Shafaq, 11.12)"]
+    assert intl == [{"head": "11.12~13, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.13)",
+                     "subs": ["* (11.12) Trump 대통령, 이란과 합의 불필요 표명", "* (11.13) IRGC, 보복 경고"]}]
+    assert _daily_import(sel[3:4], "2026-11-12")[1][0] == {"head": "11.12, 美-이란, 역내 분쟁 관련 (Aljazeera, 11.12)",
+                                                            "subs": ["* Trump 대통령, 이란과 합의 불필요 표명"]}

@@ -53,8 +53,13 @@ class BatchItem(BaseModel):
     followups: list[str]
 
     def to_summary(self) -> Summary:
-        subs = [re.sub(r"^[*·\-☞\s]+", "", x).strip() for x in self.subs]
-        return Summary(ko_title=self.title.strip(), ko_summary="\n".join(x for x in subs if x)[:1200],
+        subs = []
+        for x in self.subs:
+            mark = "☞ " if x.strip().startswith("☞") else ""       # ☞ 는 반응·평가·전망 줄 표시로 남긴다
+            body = re.sub(r"^[*·\-☞\s]+", "", x).strip()
+            if body:
+                subs.append(mark + body)
+        return Summary(ko_title=self.title.strip(), ko_summary="\n".join(subs)[:1200],
                        category=self.tag, stage=self.stage, claim_type=self.claim_type, followups=self.followups)
 
 
@@ -76,7 +81,7 @@ APPENDIX = """
 
 - id: 입력의 기사 번호 그대로.
 - title: 제목 줄. "주체, 핵심행위 + 대상·결과" 형태. **날짜와 출처는 쓰지 않는다**(화면과 문서가 "11.13, … (Shafaq, 11.13)" 형태로 붙인다). 태그도 쓰지 않는다.
-- subs: 하위 항목 목록. 입력에 제목 줄과 별도로 보존할 사실이 있을 때만 쓴다. 제목만 주어진 기사는 대부분 빈 목록이다. 각 항목은 "*" 없이 문장만 쓴다. 제목 줄을 되풀이하지 않는다.
+- subs: 하위 항목 목록. 입력에 제목 줄과 별도로 보존할 사실이 있을 때만 쓴다. 제목만 주어진 기사는 대부분 빈 목록이다. 각 항목은 "*" 없이 문장만 쓴다. 제목 줄을 되풀이하지 않는다. 사실 세부가 아니라 다른 쪽의 **반응·평가·전망**을 적는 항목은 맨 앞에 "☞ "를 붙인다(사용자의 보고서 관행: "☞ 이란, 사전 통보 없는 일방적 폐쇄 결정에 강한 유감 표명"). 입력에 그런 내용이 없으면 만들지 않는다.
 - tag: 8절의 태그 가운데 하나(정치·치안·테러·경제·국제·유가). 어느 것에도 맞지 않으면 "기타".
 - stage: 입력이 명시한 단계(계획·협의·승인·체결·시행·완료). 판단할 수 없으면 "해당없음".
 - claim_type: 정부·기관 발표는 "공식 발표", 이해당사자 주장은 "당사자 주장", 특정 인물의 말은 "발언 인용", 매체의 자체 보도는 "언론 보도".
